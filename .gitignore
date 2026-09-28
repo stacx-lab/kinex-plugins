@@ -1,0 +1,13 @@
+node_modules/
+dist/
+*.tgz
+__pycache__/
+*.pyc
+.kinex/
+.venv/
+.env
+.env.*
+*.log
+.DS_Store
+
+!vendor/*.tgz

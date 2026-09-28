@@ -1,0 +1,53 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check plugin versions and core snapshot
+        run: node script/release.mjs --check --tag "$GITHUB_REF_NAME"
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run core:check
+      - run: npm test
+      - name: Pack plugins and the core snapshot
+        run: node script/release.mjs "$RUNNER_TEMP/kinex-plugins-release" --tag "$GITHUB_REF_NAME"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kinex-plugin-packages
+          path: ${{ runner.temp }}/kinex-plugins-release/*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: kinex-plugin-packages
+          path: dist/releases
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" \
+            --generate-notes dist/releases/*.tgz dist/releases/core.json dist/releases/SHA256SUMS

@@ -1,0 +1,11 @@
+{
+  "name": "@kinex/core",
+  "version": "0.8.2",
+  "file": "kinex-core-0.8.2-97953881d032e8c2.tgz",
+  "sha256": "97953881d032e8c2ecc476dd9ddaa05e0c6ce03f9ba849f254b419bf5a28183c",
+  "source": {
+    "revision": "4db60e948060292930963656d6e2d87eacfcc767",
+    "dirty": true,
+    "capturedAt": "2026-09-28T18:58:28.174Z"
+  }
+}
