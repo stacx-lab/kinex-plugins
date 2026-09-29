@@ -58,18 +58,29 @@ export async function createCodexAdapter(options: CodexOptions) {
     const pending = new Set<Promise<unknown>>()
     const controllers = new Set<AbortController>()
     const diagnostic = options.diagnostic ?? (() => {})
+    // `previous` is the context the client has received. Call `commit` only once a response
+    // carrying the update is returned; cancelled or failed calls must not hide changes.
     const context = async (full: boolean, signal: AbortSignal) => {
       const current = await capabilities.context()
       signal.throwIfAborted()
       const sections = current.sections
       const changed = full ? sections : Object.fromEntries([...new Set([...Object.keys(previous), ...Object.keys(sections)])]
         .filter(key => previous[key] !== sections[key]).map(key => [key, sections[key] ?? ""]))
-      previous = sections
-      return { ...(full ? { instructions: translate(current.instructions) } : {}), sections: changed }
+      const commit = () => {
+        if (full) { previous = sections; return }
+        // Apply only the keys this update carried, in case another response committed meanwhile.
+        const next = { ...previous }
+        for (const key of Object.keys(changed)) {
+          const value = sections[key]
+          if (value === undefined) delete next[key]
+          else next[key] = value
+        }
+        previous = next
+      }
+      return { update: { ...(full ? { instructions: translate(current.instructions) } : {}), sections: changed }, commit }
     }
     const interrupt = () => {
       generation++
-      previous = {}
       for (const controller of controllers) controller.abort(new Error("Kinex operation cancelled"))
     }
     const run = <T>(signal: AbortSignal, urgent: boolean, fn: (context: Context) => Promise<T>): Promise<T> => {
@@ -77,7 +88,7 @@ export async function createCodexAdapter(options: CodexOptions) {
       const epoch = generation
       const controller = new AbortController()
       const abort = AbortSignal.any([lifetime.signal, signal, controller.signal])
-      const invalidate = () => { if (generation === epoch) { generation++; previous = {} } }
+      const invalidate = () => { if (generation === epoch) generation++ }
       abort.addEventListener("abort", invalidate, { once: true })
       const execute = async () => {
         abort.throwIfAborted()
@@ -112,7 +123,8 @@ export async function createCodexAdapter(options: CodexOptions) {
         const urgent = name === "kinex_stop" || input?.name === "device_stop"
         // Validate stop arguments before cancelling unrelated work.
         const stop = name === "kinex_stop" ? stopInput.parse(raw) : input?.name === "device_stop" ? stopInput.parse(input.arguments) : undefined
-        return await run(extra.signal, urgent, async invocation => {
+        let commit: (() => void) | undefined
+        const response = await run(extra.signal, urgent, async invocation => {
           if (name === "kinex_tools") {
             const input = discoveryInput.parse(raw)
             if (input.skill && input.workflow) throw new Error("Choose skill or workflow, not both")
@@ -127,14 +139,18 @@ export async function createCodexAdapter(options: CodexOptions) {
               if (result.kind !== "workflow") throw new Error("Workflow did not return a prompt")
               workflow = translate(result.prompt)
             }
-            return textResult({ ...catalog, skills: await capabilities.skills.list(), workflows: capabilities.commands.filter(command => command.kind === "workflow").map(({ name, description, arguments: args }) => ({ name, description, arguments: args })), context: await context(true, invocation.abort), ...(skill ? { skill: { ...skill, content: translate(skill.content) } } : {}), ...(workflow ? { workflow } : {}) })
+            const skills = await capabilities.skills.list()
+            const refreshed = await context(true, invocation.abort)
+            commit = refreshed.commit
+            return textResult({ ...catalog, skills, workflows: capabilities.commands.filter(command => command.kind === "workflow").map(({ name, description, arguments: args }) => ({ name, description, arguments: args })), context: refreshed.update, ...(skill ? { skill: { ...skill, content: translate(skill.content) } } : {}), ...(workflow ? { workflow } : {}) })
           }
           if (name !== "kinex_stop" && !input) throw new Error(`Unknown MCP tool: ${name}`)
           const result = await capabilities.tools.call(input?.name ?? "device_stop", input?.arguments ?? stop, { ...invocation, callID: String(extra.requestId) })
           const response = await modelResult(result)
           try {
-            const update = await context(false, invocation.abort)
-            if (Object.keys(update.sections).length) response.content.push({ type: "text", text: JSON.stringify({ context: update }) })
+            const refreshed = await context(false, invocation.abort)
+            if (Object.keys(refreshed.update.sections).length) response.content.push({ type: "text", text: JSON.stringify({ context: refreshed.update }) })
+            commit = refreshed.commit
           } catch (error) {
             invocation.abort.throwIfAborted()
             previous = {}
@@ -142,6 +158,9 @@ export async function createCodexAdapter(options: CodexOptions) {
           }
           return response
         })
+        // run() rejects if the call was aborted; the SDK also drops results of cancelled requests.
+        if (!extra.signal.aborted) commit?.()
+        return response
       } catch (error) {
         return { isError: true, content: [{ type: "text", text: error instanceof Error ? `${error.name}: ${error.message}` : String(error) }] }
       }

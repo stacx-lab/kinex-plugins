@@ -28,6 +28,10 @@ async function fixture(t, options = {}, elicit) {
 }
 const output = result => result.content.filter(item => item.type === 'text').map(item => item.text).join('\n')
 const signal = () => new AbortController().signal
+const contextOf = result => result.content.flatMap(item => {
+  if (item.type !== 'text' || !item.text.startsWith('{"context":')) return []
+  return [JSON.parse(item.text).context.sections]
+})[0] ?? {}
 
 test('fixed MCP catalog discovers live tools, skills and workflows without creating Python or shadowing ancestors', async t => {
   const secretKey = 'KINEX_TEST_MCP_SECRET'
@@ -170,6 +174,82 @@ test('MCP cancellation aborts active work and prevents queued execution', async 
   const queued = f.tool('slow'); await delay(10)
   abort.abort(); await rejected; await aborted
   assert.equal((await queued).isError, true); assert.equal(count, 1)
+})
+
+test('stops append only undelivered context changes, including changes made by cancelled work', async t => {
+  let state = 'idle', moves = 0, entered
+  const f = await fixture(t, { contributions: runtime => [coreContribution(runtime), {
+    id: 'extra', context: async () => ({ instructions: '', sections: { state } }), tools: {
+      list: async () => ({ tools: ['move', 'read'].map(name => ({ name, description: name, inputSchema: { type: 'object' } })), problems: [] }),
+      call: async (name, _args, ctx) => {
+        if (name === 'move') {
+          state = `moving ${++moves}`; entered()
+          await new Promise((resolve, reject) => ctx.abort.addEventListener('abort', () => reject(ctx.abort.reason), { once: true }))
+        }
+        return { title: name, output: name }
+      },
+    },
+  }] })
+  await seed(f.adapter.runtime)
+  await f.adapter.command('load', 'sensor', { confirm: async () => false })
+  const snapshot = async () => (await f.call('kinex_tools')).structuredContent.context.sections
+  const changes = (before, after) => Object.fromEntries(Object.keys(after).filter(key => before[key] !== after[key]).map(key => [key, after[key]]))
+  const started = () => new Promise(resolve => { entered = resolve })
+  // (a) Stops append only what changed since the last delivered context, not the whole context.
+  let before = await snapshot()
+  assert.ok(Object.keys(before).length > 5)
+  const idle = await f.call('kinex_stop', { deviceID: 'sensor' })
+  assert.ok(!idle.isError, output(idle))
+  let after = await snapshot()
+  assert.deepEqual(contextOf(idle), changes(before, after))
+  before = after
+  const urgent = await f.tool('device_stop')
+  assert.ok(!urgent.isError, output(urgent))
+  after = await snapshot()
+  assert.deepEqual(contextOf(urgent), changes(before, after))
+  // (b) A change made by a call that a stop cancels is delivered by the stop's response.
+  before = after
+  let ready = started()
+  const interrupted = f.tool('move'); await ready
+  const stop = await f.call('kinex_stop')
+  assert.ok(!stop.isError, output(stop))
+  assert.match(output(await interrupted), /cancelled/)
+  after = await snapshot()
+  assert.equal(contextOf(stop)['extra.state'], 'moving 1')
+  assert.deepEqual(contextOf(stop), changes(before, after))
+  // (b) A change made by a call Codex cancels over MCP is delivered by the next response.
+  before = after
+  ready = started()
+  const cancel = new AbortController()
+  const active = f.client.callTool({ name: 'kinex_call', arguments: { name: 'move', arguments: {} } }, undefined, { signal: cancel.signal })
+  const rejected = assert.rejects(active)
+  await ready; cancel.abort(); await rejected
+  const read = await f.tool('read')
+  assert.ok(!read.isError, output(read))
+  after = await snapshot()
+  assert.equal(contextOf(read)['extra.state'], 'moving 2')
+  assert.deepEqual(contextOf(read), changes(before, after))
+})
+
+test('context computed for a response that is cancelled before it is returned is delivered later', async t => {
+  let state = 'idle', trap
+  // Serializing this schema cancels the request after its context was computed, before its response is returned.
+  const inputSchema = { toJSON: () => { trap?.(); trap = undefined; return { type: 'object' } } }
+  const f = await fixture(t, { contributions: runtime => [coreContribution(runtime), {
+    id: 'extra', context: async () => ({ instructions: '', sections: { state } }), tools: {
+      list: async () => ({ tools: [{ name: 'read', description: 'read', inputSchema }], problems: [] }),
+      call: async () => ({ title: 'read', output: 'read' }),
+    },
+  }] })
+  assert.equal((await f.call('kinex_tools')).structuredContent.context.sections['extra.state'], 'idle')
+  state = 'moved'
+  const cancel = new AbortController()
+  trap = () => cancel.abort()
+  await assert.rejects(f.client.callTool({ name: 'kinex_tools', arguments: {} }, undefined, { signal: cancel.signal }))
+  assert.equal(trap, undefined)
+  const read = contextOf(await f.tool('read'))
+  assert.equal(read['extra.state'], 'moved')
+  assert.deepEqual(Object.keys(read), ['extra.state'])
 })
 
 test('private controls share recording and driver state, reject wrong workspace and cancel on disconnect', async t => {
