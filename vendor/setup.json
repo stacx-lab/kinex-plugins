@@ -1,0 +1,11 @@
+{
+  "name": "@kinex/setup",
+  "version": "1.0.0",
+  "file": "kinex-setup-1.0.0-1435af1dffd04bd9.tgz",
+  "sha256": "1435af1dffd04bd931101265ccdb175b27f4d3cc231c13e9b18b04025c21ff3b",
+  "source": {
+    "revision": "c907f2faa321e8185780e10aa67d7ddefc8fb6ed",
+    "dirty": true,
+    "capturedAt": "2026-10-11T06:04:10.309Z"
+  }
+}

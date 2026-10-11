@@ -2,15 +2,18 @@ import { AsyncLocalStorage } from "node:async_hooks"
 import { randomUUID } from "node:crypto"
 import path from "node:path"
 import type { PluginInput, ToolContext } from "@opencode-ai/plugin"
-import { createKinexRuntime, loadPermissionRules, kinexPermissionAction, PermissionDeniedError, QuestionDeclinedError, type KinexRuntime } from "@kinex/core"
-import { composeContributions, coreContribution, type KinexContribution } from "@kinex/core/integration"
+import { createKinexRuntime, loadPermissionRules, kinexPermissionAction, PermissionDeniedError, QuestionDeclinedError, type KinexRuntime, type PermissionAction } from "@kinex/core"
+import { composeContributions } from "@kinex/core/integration"
+import { defaultComposition, type KinexComposition } from "./composition.ts"
+import { setupPermissionDefaults } from "@kinex/setup"
 
 export interface OpenCodeOptions {
   enableRecording?: boolean
-  contributions?(runtime: KinexRuntime): readonly KinexContribution[]
+  composition?: KinexComposition
 }
 
 export class OpenCodeOwner {
+  private readonly permissionDefaults: Record<string, PermissionAction>
   readonly runtime: KinexRuntime
   readonly capabilities
   readonly lifetime = new AbortController()
@@ -24,13 +27,15 @@ export class OpenCodeOwner {
   private controllers = new Map<AbortController, string>()
 
   constructor(readonly input: PluginInput, options: OpenCodeOptions) {
-    this.runtime = createKinexRuntime({ directory: input.directory, enableRecording: options.enableRecording, host: {
+    const composition = options.composition ?? defaultComposition
+    this.permissionDefaults = options.composition ? {} : setupPermissionDefaults
+    this.runtime = createKinexRuntime({ builtinSkillRoots: composition.builtinSkillRoots ?? [], reservedToolNames: composition.reservedToolNames ?? [], directory: input.directory, enableRecording: options.enableRecording, host: {
       ask: async request => {
         const ctx = this.calls.getStore()
         if (!ctx) throw new PermissionDeniedError(request.permission)
         ctx.abort.throwIfAborted()
         if (request.permission === "device_stop") return
-        const action = kinexPermissionAction(request.permission, await loadPermissionRules(ctx.directory))
+        const action = kinexPermissionAction(request.permission, await loadPermissionRules(ctx.directory), this.permissionDefaults)
         if (action === "deny") throw new PermissionDeniedError(request.permission)
         try {
           await ctx.ask({ permission: request.permission, patterns: [request.permission], always: [request.permission], metadata: { ...request.metadata, description: request.description } })
@@ -56,7 +61,7 @@ export class OpenCodeOwner {
         })) }
       },
     } })
-    try { this.capabilities = composeContributions(options.contributions?.(this.runtime) ?? [coreContribution(this.runtime)]) }
+    try { this.capabilities = composeContributions(composition.contributions(this.runtime)) }
     catch (error) { void this.runtime.dispose(); throw error }
   }
 
@@ -110,7 +115,7 @@ export class OpenCodeOwner {
         const result = await this.capabilities.tools.call(name, args, {
           sessionID: ctx.sessionID, callID: randomUUID(), directory: ctx.directory, abort: signal,
           ask: async request => {
-            const action = kinexPermissionAction(request.permission, await loadPermissionRules(ctx.directory))
+            const action = kinexPermissionAction(request.permission, await loadPermissionRules(ctx.directory), this.permissionDefaults)
             if (request.permission === "device_stop") return
             if (action === "deny") throw new PermissionDeniedError(request.permission)
             try { await ctx.ask({ permission: request.permission, patterns: [request.permission], always: [request.permission], metadata: { ...request.metadata, description: request.description } }) }

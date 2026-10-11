@@ -47,7 +47,11 @@ test('fixed MCP catalog discovers live tools, skills and workflows without creat
   assert.equal('env' in JSON.parse(discovery.context.sections['core.python']), false)
   assert.ok(discovery.tools.some(tool => tool.name === 'device'))
   assert.ok(!discovery.tools.some(tool => tool.name === 'record'))
-  assert.match(discovery.context.sections['core.devices'], /sensor/)
+  assert.equal('core.devices' in discovery.context.sections, false)
+  assert.ok(discovery.tools.some(tool => tool.name === 'setup_plan'))
+  assert.ok(discovery.skills.some(skill => skill.name === 'onboard-ros2'))
+  assert.ok(discovery.workflows.some(command => command.name === 'calibrate'))
+  assert.match((await f.adapter.command('devices', '', { confirm: async () => false })).text, /sensor/)
   assert.ok((await f.call('kinex_tools', { skill: 'setup-device' })).structuredContent.skill.content.length > 100)
   assert.match(output(await f.call('kinex_tools', { workflow: 'register', arguments: 'rgb' })), /rgb/)
   assert.equal((await f.call('kinex_tools', { workflow: 'load', arguments: 'sensor' })).isError, true)
@@ -99,7 +103,7 @@ test('contributions retain questions, image bytes and dynamic routing', async t 
   const bytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64')
   await writeFile(image, bytes)
   let enabled = true, cancelled = false
-  const f = await fixture(t, { directory, contributions: runtime => [coreContribution(runtime), {
+  const f = await fixture(t, { directory, composition: { contributions: runtime => [coreContribution(runtime), {
     id: 'extra', tools: {
       list: async () => ({ tools: enabled ? [{ name: 'interview', description: 'interview', inputSchema: { type: 'object' } }] : [], problems: [] }),
       call: async (_name, _args, ctx) => {
@@ -107,7 +111,7 @@ test('contributions retain questions, image bytes and dynamic routing', async t 
         return { title: 'image', output: JSON.stringify(answer), metadata: { captured: true }, attachments: [{ path: image, mime: 'image/png' }] }
       },
     },
-  }] }, async () => cancelled ? { action: 'cancel' } : { action: 'accept', content: { choice_0: true, choice_1: false } })
+  }] } }, async () => cancelled ? { action: 'cancel' } : { action: 'accept', content: { choice_0: true, choice_1: false } })
   const result = await f.tool('interview')
   assert.match(output(result), /"Which\?":"A"/)
   assert.equal(result.content.find(item => item.type === 'image').data, bytes.toString('base64'))
@@ -124,7 +128,7 @@ test('denial cancels queued siblings and emergency stop interrupts active work',
   let entered, executionCount = 0
   let ready = new Promise(resolve => { entered = resolve })
   let release
-  const f = await fixture(t, { contributions: runtime => [coreContribution(runtime), {
+  const f = await fixture(t, { composition: { contributions: runtime => [coreContribution(runtime), {
     id: 'extra', tools: {
       list: async () => ({ tools: ['deny', 'wait'].map(name => ({ name, description: name, inputSchema: { type: 'object' } })), problems: [] }),
       call: async (name, _args, ctx) => {
@@ -134,7 +138,7 @@ test('denial cancels queued siblings and emergency stop interrupts active work',
         return { title: 'done', output: 'done' }
       },
     },
-  }] })
+  }] } })
   await seed(f.adapter.runtime)
   const first = f.tool('deny'); await ready
   const sibling = f.tool('deny'); await delay(10); release()
@@ -153,7 +157,7 @@ test('MCP cancellation aborts active work and prevents queued execution', async 
   const ready = new Promise(resolve => { entered = resolve })
   const aborted = new Promise(resolve => { cancelled = resolve })
   let count = 0
-  const f = await fixture(t, { contributions: runtime => [coreContribution(runtime), {
+  const f = await fixture(t, { composition: { contributions: runtime => [coreContribution(runtime), {
     id: 'extra', tools: {
       list: async () => ({ tools: [{ name: 'slow', description: 'slow', inputSchema: { type: 'object' } }], problems: [] }),
       call: async (_name, _args, ctx) => {
@@ -162,7 +166,7 @@ test('MCP cancellation aborts active work and prevents queued execution', async 
         return { title: 'done', output: 'done' }
       },
     },
-  }] })
+  }] } })
   const abort = new AbortController()
   const active = f.client.callTool({ name: 'kinex_call', arguments: { name: 'slow', arguments: {} } }, undefined, { signal: abort.signal })
   const rejected = assert.rejects(active)
@@ -231,7 +235,7 @@ test('context errors after an action retain its result and attachment omissions 
   const { open } = await import('node:fs/promises')
   const large = path.join(directory, 'large.png')
   const file = await open(large, 'w'); await file.truncate(11 * 1024 * 1024); await file.close()
-  const f = await fixture(t, { directory, contributions: runtime => [coreContribution(runtime), {
+  const f = await fixture(t, { directory, composition: { contributions: runtime => [coreContribution(runtime), {
     id: 'extra', context: async () => {
       if (executed) throw new Error('context unavailable')
       return { instructions: '', sections: {} }
@@ -239,7 +243,7 @@ test('context errors after an action retain its result and attachment omissions 
       list: async () => ({ tools: [{ name: 'action', description: 'action', inputSchema: { type: 'object' } }], problems: [] }),
       call: async () => { executed++; return { title: 'done', output: 'ACTION_COMPLETED', attachments: [{ path: large, mime: 'image/png' }, { path: path.join(directory, 'missing.png'), mime: 'image/png' }] } },
     },
-  }] })
+  }] } })
   const result = await f.tool('action')
   assert.ok(!result.isError)
   assert.match(output(result), /ACTION_COMPLETED/)
@@ -261,4 +265,26 @@ test('disposal cancels initialization while a trusted command waits on its lane'
   await delay(50)
   await f.adapter.dispose()
   await settled
+})
+
+test('default setup permissions allow plan changes, deny computation without approval and respect explicit denies', async t => {
+  const f = await fixture(t)
+  const saved = await f.tool('setup_plan', { action: 'save', revision: 0, plan: { version: 1, nodes: [], task: null } })
+  assert.ok(!saved.isError, output(saved))
+  assert.match(output(await f.tool('calib_compute', { operation: 'urdf-introspect', procedure: 'calibrate-joint-range', bindings: { arm: 'missing' } })), /PermissionDeniedError/)
+  await writeFile(path.join(f.directory, 'kinex.json'), JSON.stringify({ permission: { setup_plan: 'deny' } }))
+  const rejected = await f.tool('setup_plan', { action: 'select', revision: saved.structuredContent.metadata.revision, task: null })
+  assert.match(output(rejected), /PermissionDeniedError/)
+  await assert.rejects(stat(path.join(f.directory, '.kinex/python')), { code: 'ENOENT' })
+})
+
+test('explicit core-only composition omits setup roots, tools and workflows', async t => {
+  const f = await fixture(t, { composition: { contributions: runtime => [coreContribution(runtime)] } })
+  const discovered = (await f.call('kinex_tools')).structuredContent
+  assert.ok(discovered.tools.some(tool => tool.name === 'device'))
+  assert.ok(!discovered.tools.some(tool => tool.name === 'setup_plan'))
+  assert.ok(!discovered.skills.some(skill => skill.name === 'onboard-ros2'))
+  assert.ok(!discovered.workflows.some(command => command.name === 'onboarding'))
+  assert.ok(!Object.keys(discovered.context.sections).some(key => key.startsWith('setup.')))
+  await assert.rejects(stat(path.join(f.directory, '.kinex')), { code: 'ENOENT' })
 })

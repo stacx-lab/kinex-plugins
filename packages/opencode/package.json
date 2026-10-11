@@ -1,6 +1,6 @@
 {
   "name": "@kinex/opencode",
-  "version": "0.8.1",
+  "version": "1.0.0",
   "description": "Kinex integration for opencode",
   "type": "module",
   "files": [
@@ -8,8 +8,8 @@
     "README.md"
   ],
   "engines": {
-    "node": ">=22.19.0",
-    "opencode": "1.18.31"
+    "node": ">=22.22.2",
+    "opencode": "1.19.0"
   },
   "exports": {
     ".": {
@@ -30,10 +30,11 @@
     }
   },
   "dependencies": {
-    "@kinex/core": "0.8.2",
-    "@opencode-ai/plugin": "1.18.31",
+    "@kinex/core": "1.0.0",
+    "@opencode-ai/plugin": "1.19.0",
     "zod": "^4.4.3",
-    "@opencode-ai/sdk": "1.18.31"
+    "@opencode-ai/sdk": "1.19.0",
+    "@kinex/setup": "1.0.0"
   },
   "main": "./dist/server.js"
 }

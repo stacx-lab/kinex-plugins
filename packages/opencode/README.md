@@ -1,12 +1,12 @@
 # @kinex/opencode
 
-Kinex robotics in OpenCode **1.18.31**, with separate server and TUI entrypoints.
+Kinex robotics in OpenCode **1.19.0**, with separate server and TUI entrypoints.
 The first release targets same-machine Linux/macOS. The server owns one runtime
 per OpenCode workspace instance; the TUI uses a private local Unix socket.
 
 ## Install before npm publication
 
-Use OpenCode **1.18.31**. From your robot workspace, install the built local package:
+Use OpenCode **1.19.0**. From your robot workspace, install the built local package:
 
 ```sh
 /path/to/kinex-plugins/node_modules/.bin/opencode plugin file:///path/to/kinex-plugins/packages/opencode
@@ -24,13 +24,14 @@ To install independent packaged artifacts instead, build the repository and run
 
 ```sh
 npm install --prefix /path/to/kinex-plugins \
-  /tmp/kinex-plugins-release/kinex-core-0.8.1-*.tgz \
-  /tmp/kinex-plugins-release/kinex-opencode-0.8.1.tgz
+  /tmp/kinex-plugins-release/kinex-core-1.0.0-*.tgz \
+  /tmp/kinex-plugins-release/kinex-setup-1.0.0-*.tgz \
+  /tmp/kinex-plugins-release/kinex-opencode-1.0.0.tgz
 opencode plugin file:///path/to/kinex-plugins/node_modules/@kinex/opencode
 ```
 
 This does not require standalone Kinex or an adjacent core checkout. After npm
-publication, use `opencode plugin @kinex/opencode@0.8.1`.
+publication, use `opencode plugin @kinex/opencode@1.0.0`.
 
 For manual configuration, use `file:///.../dist/server.js` in the `plugin` array
 of `opencode.json` and `file:///.../dist/tui.js` in `.opencode/tui.json`. Choose one
@@ -39,7 +40,7 @@ package directory, to avoid loading the same plugin twice.
 
 ## Direct commands and model tools
 
-`/load`, `/unload`, `/reload`, `/devices`, `/ping`, `/stop`, `/unregister` and
+`/load`, `/unload`, `/devices`, `/ping`, `/stop`, `/unregister` and
 `/record` use native selection/input dialogs. They execute directly, with no model
 request. `/onboarding`, `/register` and `/calibrate` submit workflows to the host.
 All commands have `/kinex-NAME` aliases; existing host slash names are retained.
@@ -60,7 +61,7 @@ does not travel with OpenCode's own session exports/forks.
 
 Core explicit denies are retained and device permissions go through OpenCode's
 native approval mechanism. Configure `device_act`, `device_read`,
-`device_calibrate`, `calib_write` and `record` in host permissions as needed.
+`calib_compute`, `setup_plan` and `record` in host permissions as needed.
 The adapter does not change OpenCode's global permission policy. Emergency stop
 does not wait for the Kinex execution queue.
 
@@ -80,9 +81,22 @@ native question tool before invoking such workflows; unanswered requests are
 declined, never invented. Physical devices and live provider cache-hit rates need
 separate environment validation.
 
-## Additional feature packages
+## Feature composition
 
-`createOpenCodePlugin({ contributions: runtime => [...] })` composes explicit
-feature contributions. Include `coreContribution(runtime)` and the additional
-packages. Tools, commands, skills and namespaced context use the same adapter;
-feature packages own business logic and the product entrypoint owns the runtime.
+Core and setup are enabled by default, including `setup_plan`, `calib_sample`,
+`calib_compute`, onboarding, calibration and ROS provisioning skills. Setup borrows
+core's runtime; the adapter owns cancellation, recording and disposal. Importing
+setup does not activate its bundled Pi web-search or BTW extensions.
+
+The v1 API replaces the top-level `contributions` factory with `composition`:
+`{ builtinSkillRoots?, reservedToolNames?, contributions(runtime) }`. Roots and
+reserved tool names are selected before runtime construction. Custom composition
+replaces the defaults; omitted roots/reservations are empty. For core only, pass
+`composition: { contributions: runtime => [coreContribution(runtime)] }`.
+For custom setup composition, supply `setupSkillRoots`, `setupToolNames` and
+`setupContribution(createKinexSetup(runtime))` explicitly alongside core.
+
+Default setup permissions allow local `setup_plan` changes and ask for offline
+`calib_compute`; explicit rules take precedence. Samples retain device-read
+permissions. Host approval gates still apply, and recording remains opt-in for
+model calls. Custom compositions use core permission defaults.

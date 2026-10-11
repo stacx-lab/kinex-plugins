@@ -46,7 +46,7 @@ test('real Codex loads MCP, forwards approvals, calls tools and refreshes contex
   const first = await host.request('turn/start', { threadId: host.thread.id, input: [{ type: 'text', text: 'Inspect current Kinex tools and devices.' }] })
   await host.wait(value => value.method === 'turn/completed' && value.params.turn.id === first.turn.id)
   assert.ok(provider.requests.length >= 2, JSON.stringify(host.notifications.slice(-10)))
-  assert.match(JSON.stringify(provider.requests.at(-1).input.filter(item => item.type === 'function_call_output')), /core.devices|sensor/)
+  assert.match(JSON.stringify(provider.requests.at(-1).input.filter(item => item.type === 'function_call_output')), /setup.provisioning/)
   await mkdir(path.join(directory, '.kinex/tool'), { recursive: true })
   await writeFile(path.join(directory, '.kinex/tool/live.js'), "export default { description: 'live', execute: async () => ({title:'live',output:'LIVE_CODEX_RESULT'}) }")
   provider.steps.push({ search: true }, { name: 'kinex_tools', arguments: {} }, { name: 'kinex_call', arguments: { name: 'live', arguments: {} } }, { text: 'REFRESH_DONE' })

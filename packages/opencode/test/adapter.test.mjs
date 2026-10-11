@@ -24,7 +24,7 @@ test('OpenCode adapter composes two features, refreshes tools, and denies queued
   let runtime
   let available = true
   let executions = 0
-  const hooks = await createOpenCodePlugin({ contributions: core => {
+  const hooks = await createOpenCodePlugin({ composition: { contributions: core => {
     runtime = core
     return [coreContribution(core), {
       id: 'world', tools: {
@@ -33,7 +33,7 @@ test('OpenCode adapter composes two features, refreshes tools, and denies queued
       },
       commands: [{ name: 'world-status', description: 'World status', arguments: '', kind: 'operation', execute: async () => ({ kind: 'output', text: 'WORLD_STATUS' }) }],
     }]
-  } })(input(cwd))
+  } } })(input(cwd))
   t.after(() => hooks.dispose())
   await seed(runtime)
   const ctx = { directory: cwd, sessionID: 'ses_test', messageID: 'msg_test', abort: new AbortController().signal, ask: async () => { throw new Error('denied') } }
@@ -67,6 +67,8 @@ test('OpenCode context projection is append-only, survives reopen, and resets af
   const first = structuredClone(messages)
   const assistant = { info: { id: 'msg_reply', sessionID: 'ses_test', role: 'assistant', time: { created: 2 } }, parts: [{ type: 'text', text: 'done' }] }
   await seed(runtime)
+  await mkdir(path.join(cwd, '.kinex/tool'), { recursive: true })
+  await writeFile(path.join(cwd, '.kinex/tool/context_probe.js'), "export default { description: 'context probe', execute: async () => ({ title: 'probe', output: 'ok' }) }")
   const next = [user, assistant]
   await projectContext(cwd, next, caps)
   assert.deepEqual(next.slice(0, first.length), first)
@@ -77,7 +79,7 @@ test('OpenCode context projection is append-only, survives reopen, and resets af
   const compacted = [{ ...assistant, info: { ...assistant.info, id: 'msg_summary', summary: true } }, { ...user, info: { ...user.info, id: 'msg_continue' } }]
   await projectContext(cwd, compacted, caps)
   assert.equal(compacted.length, 3)
-  assert.match(compacted.at(-1).parts[0].text, /sensor/)
+  assert.match(compacted.at(-1).parts[0].text, /context_probe/)
 })
 
 test('OpenCode context storage preserves ancestor robotics workspace discovery', async t => {
@@ -134,7 +136,7 @@ test('real OpenCode loads the server plugin, exposes tools, and runs direct comm
   assert.deepEqual(fake.requests[start + 1].messages.slice(0, fake.requests[start].messages.length), fake.requests[start].messages)
   await host.client.session.summarize({ path: { id: host.session.id }, body: { providerID: 'fake', modelID: 'test' }, throwOnError: true })
   await host.client.session.prompt({ path: { id: host.session.id }, body: { parts: [{ type: 'text', text: 'Continue after compaction' }] }, throwOnError: true })
-  assert.match(JSON.stringify(fake.requests.at(-1)), /kinex_context[\s\S]*sensor/)
+  assert.match(JSON.stringify(fake.requests.at(-1)), /kinex_context[\s\S]*fresh/)
 })
 
 test('OpenCode command cancellation, confirmation cleanup and failed startup release resources', async t => {
@@ -142,13 +144,13 @@ test('OpenCode command cancellation, confirmation cleanup and failed startup rel
   let started
   const running = new Promise(resolve => { started = resolve })
   let cancelled = false
-  const hooks = await createOpenCodePlugin({ contributions: core => [coreContribution(core), {
+  const hooks = await createOpenCodePlugin({ composition: { contributions: core => [coreContribution(core), {
     id: 'world', commands: [{ name: 'slow', arguments: '', description: 'slow command', kind: 'operation', execute: async (_args, context) => {
       started()
       await new Promise(resolve => context.signal.addEventListener('abort', () => { cancelled = true; resolve() }, { once: true }))
       context.signal.throwIfAborted()
     } }],
-  }] })(input(cwd))
+  }] } })(input(cwd))
   const [endpoint] = await endpoints(cwd)
   const abort = new AbortController()
   const request = requestCommand(endpoint, { method: 'execute', sessionID: 'ses_test', directory: cwd, command: 'slow', args: '' }, { signal: abort.signal, confirm: async () => false })
@@ -159,7 +161,7 @@ test('OpenCode command cancellation, confirmation cleanup and failed startup rel
   await hooks.dispose()
   assert.equal(cancelled, true)
   assert.deepEqual(await endpoints(cwd), [])
-  await assert.rejects(createOpenCodePlugin({ contributions: () => [{ id: 'duplicate' }, { id: 'duplicate' }] })(input(cwd)), /duplicate/i)
+  await assert.rejects(createOpenCodePlugin({ composition: { contributions: () => [{ id: 'duplicate' }, { id: 'duplicate' }] } })(input(cwd)), /duplicate/i)
   assert.deepEqual(await endpoints(cwd), [])
 })
 
@@ -169,13 +171,13 @@ test('OpenCode images retain bytes and active recordings remain owned by their s
   const bytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5KsAAAAASUVORK5CYII=', 'base64')
   await writeFile(frame, bytes)
   let runtime
-  const hooks = await createOpenCodePlugin({ contributions: core => {
+  const hooks = await createOpenCodePlugin({ composition: { contributions: core => {
     runtime = core
     return [coreContribution(core), { id: 'vision', tools: {
       list: async () => ({ tools: [{ name: 'frame', description: 'frame', inputSchema: { type: 'object' } }], problems: [] }),
       call: async () => ({ title: 'frame', output: 'frame captured', attachments: [{ path: frame, mime: 'image/png' }] }),
     } }]
-  } })(input(cwd))
+  } } })(input(cwd))
   t.after(() => hooks.dispose())
   const signal = new AbortController().signal
   const result = await hooks.tool.kinex_call.execute({ name: 'frame', arguments: {} }, { sessionID: 'ses_first', messageID: 'msg_frame', directory: cwd, abort: signal, ask: async () => {} })
@@ -190,4 +192,26 @@ test('OpenCode images retain bytes and active recordings remain owned by their s
   await assert.rejects(command('ses_second', 'record', 'stop'), /Another session/)
   await hooks.event({ event: { type: 'session.deleted', properties: { info: { id: 'ses_first' } } } })
   assert.equal(await runtime.recording.status(), undefined)
+})
+
+test('default OpenCode composition exposes setup while retaining host approvals and lazy discovery', async t => {
+  const cwd = await workspace(t)
+  const hooks = await createOpenCodePlugin()(input(cwd))
+  t.after(() => hooks.dispose())
+  let permissions = []
+  const ctx = { directory: cwd, sessionID: 'ses_setup', messageID: 'msg_setup', abort: new AbortController().signal, ask: async request => { permissions.push(request.permission) } }
+  const discovery = JSON.parse(await hooks.tool.kinex_tools.execute({}, ctx))
+  assert.ok(discovery.tools.some(tool => tool.name === 'setup_plan'))
+  assert.ok(discovery.skills.some(skill => skill.name === 'onboard-ros2'))
+  await assert.rejects(stat(path.join(cwd, '.kinex')), { code: 'ENOENT' })
+  const [endpoint] = await endpoints(cwd)
+  const { commands } = await requestCommand(endpoint, { method: 'describe', sessionID: '', directory: cwd, args: '' }, { signal: ctx.abort })
+  assert.ok(commands.some(command => command.name === 'onboarding'))
+  const result = await hooks.tool.kinex_call.execute({ name: 'setup_plan', arguments: { action: 'save', revision: 0, plan: { version: 1, nodes: [], task: null } } }, ctx)
+  assert.ok(!result.metadata.kinex.isError)
+  assert.deepEqual(permissions, ['setup_plan'])
+  await writeFile(path.join(cwd, 'kinex.json'), JSON.stringify({ permission: { setup_plan: 'deny' } }))
+  await assert.rejects(hooks.tool.kinex_call.execute({ name: 'setup_plan', arguments: { action: 'select', revision: result.metadata.revision, task: null } }, ctx), /PermissionDeniedError/)
+  assert.deepEqual(permissions, ['setup_plan'])
+  await assert.rejects(stat(path.join(cwd, '.kinex/python')), { code: 'ENOENT' })
 })

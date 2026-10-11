@@ -3,9 +3,10 @@
 Read README.md for development, dependency refreshes and releases, and PLAN.md
 for current progress. This project owns native Pi, OpenCode and Codex adapters.
 
-- Robotics belongs to `@kinex/core`, consumed from the checked-in snapshot under
+- Device operation belongs to `@kinex/core`; onboarding/calibration belongs to
+  `@kinex/setup`. Both are consumed from checked-in snapshots under
   `vendor/`. Never copy or edit core implementation here or import sibling source
-  files. Refresh the snapshot explicitly with `npm run core:refresh -- PATH`.
+  files. Refresh both snapshots explicitly with `npm run core:refresh -- PATH`.
 - Each host adapter owns host permissions, session/context projection, lifecycle
   binding and presentation. Use published host SDKs; do not reimplement providers,
   coding tools, agent loops or TUI frameworks.

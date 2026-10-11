@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks"
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent"
-import { PermissionDeniedError, QuestionDeclinedError, kinexPermissionAction, loadPermissionRules, type RuntimeOptions, type Question } from "@kinex/core"
+import { PermissionDeniedError, QuestionDeclinedError, kinexPermissionAction, loadPermissionRules, type RuntimeOptions, type Question, type PermissionAction } from "@kinex/core"
 
 export type Mode = "ask" | "auto" | "yolo"
 export class Interaction {
@@ -8,7 +8,7 @@ export class Interaction {
   private lifetime = new AbortController()
   private queue: Promise<unknown> = Promise.resolve()
   private grants = new Set<string>()
-  constructor(public mode: Mode) {}
+  constructor(public mode: Mode, private readonly defaults: Record<string, PermissionAction> = {}) {}
 
   reset() {
     this.lifetime.abort(new Error("Session ended"))
@@ -40,7 +40,7 @@ export class Interaction {
       const { ctx, signal } = this.current()
       const key = `${ctx.sessionManager.getSessionId()}:${request.permission}`
       if (request.permission === "device_stop" || this.mode !== "ask" || this.grants.has(key)) return
-      const action = kinexPermissionAction(request.permission, await loadPermissionRules(ctx.cwd))
+      const action = kinexPermissionAction(request.permission, await loadPermissionRules(ctx.cwd), this.defaults)
       if (action === "allow") return
       if (action === "ask" && ctx.hasUI) {
         const choice = await this.dialog(() => ctx.ui.select(`Kinex: ${request.permission}\n${request.description}`, ["Allow once", "Allow for this session", "Deny"], { signal }))

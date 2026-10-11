@@ -1,6 +1,6 @@
 {
   "name": "@kinex/pi",
-  "version": "0.8.1",
+  "version": "1.0.0",
   "description": "Kinex integration for pi",
   "type": "module",
   "files": [
@@ -8,7 +8,7 @@
     "README.md"
   ],
   "engines": {
-    "node": ">=22.19.0"
+    "node": ">=22.22.2"
   },
   "exports": {
     ".": {
@@ -21,7 +21,8 @@
     }
   },
   "dependencies": {
-    "@kinex/core": "0.8.2"
+    "@kinex/core": "1.0.0",
+    "@kinex/setup": "1.0.0"
   },
   "pi": {
     "extensions": [
@@ -32,8 +33,8 @@
     "pi-package"
   ],
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": ">=0.86.1 <0.87.0",
-    "@earendil-works/pi-tui": ">=0.86.1 <0.87.0",
+    "@earendil-works/pi-coding-agent": ">=1.1.0 <1.2.0",
+    "@earendil-works/pi-tui": ">=1.1.0 <1.2.0",
     "typebox": "^1.3.27"
   }
 }

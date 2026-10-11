@@ -1,9 +1,9 @@
 # @kinex/codex
 
 Kinex robotics in Codex through local stdio MCP, with a user control CLI sharing
-the same runtime. Tested with Codex **0.155.1**, Node **22.19.0** and Linux.
+the same runtime. Tested with Codex **0.162.1**, Node **22.22.2** and Linux.
 The local transport also targets macOS; remote control and Windows are deferred.
-All robotics behavior and assets come from Core; Codex retains its coding tools,
+Device behavior comes from core; onboarding, calibration and ROS setup come from setup; Codex retains its coding tools,
 permissions, credentials, sessions and UI.
 
 ## Install and connect
@@ -13,12 +13,13 @@ Build from the repository with `npm ci && npm run build`, then:
 ```sh
 npm run pack -- /tmp/kinex-plugins-release
 npm install --prefix /path/to/kinex-plugins \
-  /tmp/kinex-plugins-release/kinex-core-0.8.1-*.tgz \
-  /tmp/kinex-plugins-release/kinex-codex-0.8.1.tgz
+  /tmp/kinex-plugins-release/kinex-core-1.0.0-*.tgz \
+  /tmp/kinex-plugins-release/kinex-setup-1.0.0-*.tgz \
+  /tmp/kinex-plugins-release/kinex-codex-1.0.0.tgz
 ```
 
 Add this to the robot project's trusted `.codex/config.toml`, or to your user
-Codex configuration. Replace all absolute paths and use Node >=22.19:
+Codex configuration. Replace all absolute paths and use Node >=22.22.2:
 
 ```toml
 [mcp_servers.kinex]
@@ -47,8 +48,8 @@ ordinary Codex shells keep their existing environment.
 
 - `kinex_tools`: current schemas, discovery problems, skills, workflow names and
   complete context. Optional `skill` loads a skill; `workflow` plus string
-  `arguments` returns Core's onboarding/register/calibrate prompt.
-- `kinex_call`: invoke a current Core tool with `name` and object `arguments`.
+  `arguments` returns the composed onboarding/register/calibrate prompt.
+- `kinex_call`: invoke a current composed tool with `name` and object `arguments`.
 - `kinex_stop`: cancel running Kinex work and invoke Core `device_stop`, optionally
   with `deviceID` and `reason`, bypassing the ordinary Kinex queue and approvals.
 
@@ -82,7 +83,7 @@ With Codex running, use another terminal:
 /path/to/kinex-plugins/node_modules/.bin/kinex-codex control --directory /path/to/robot-workspace record stop
 ```
 
-`commands` lists Core commands. Device operations, stop and recording execute
+`commands` lists composed commands. Device operations, stop and recording execute
 without a model request. `unregister` requires typing `yes` in an interactive
 terminal; non-interactive deletion is declined. Workflow commands print their
 prompts for submission to Codex; they do not start a model themselves.
@@ -110,18 +111,30 @@ work, finalize recordings, release owned drivers and remove control endpoints.
 
 ## Public integration API
 
-`await createCodexAdapter({directory, enableRecording?, contributions?})` returns
+`await createCodexAdapter({directory, enableRecording?, composition?})` returns
 `runtime`, `capabilities`, `sessionID`, `server`, `connect(transport)`,
 `command(name, arguments, context)` and `dispose()`. Construction reads catalogs
 and instructions; `connect()` restores loaded devices. Owners must dispose the
 adapter on shutdown, even if it was never connected. Only the CLI installs
 process handlers.
 
-The default contribution is `coreContribution(runtime)`. An explicit
-`contributions(runtime)` factory can compose it with other `KinexContribution`
-features. Contributions borrow the runtime and preserve authorization/cancellation;
-the adapter owns disposal. There is no automatic package discovery or new
-robotics business API.
+Core and setup are enabled by default, including `setup_plan`, `calib_sample`,
+`calib_compute`, onboarding, calibration and ROS provisioning skills. Setup borrows
+core's runtime; the adapter owns cancellation, recording and disposal. Importing
+setup does not activate its bundled Pi web-search or BTW extensions.
+
+The v1 API replaces the top-level `contributions` factory with `composition`:
+`{ builtinSkillRoots?, reservedToolNames?, contributions(runtime) }`. Roots and
+reserved tool names are selected before runtime construction. Custom composition
+replaces the defaults; omitted roots/reservations are empty. For core only, pass
+`composition: { contributions: runtime => [coreContribution(runtime)] }`.
+For custom setup composition, supply `setupSkillRoots`, `setupToolNames` and
+`setupContribution(createKinexSetup(runtime))` explicitly alongside core.
+
+Default setup permissions allow local `setup_plan` changes and ask for offline
+`calib_compute`; explicit rules take precedence. Samples retain device-read
+permissions. Host approval gates still apply, and recording remains opt-in for
+model calls. Custom compositions use core permission defaults.
 
 ## Validation
 

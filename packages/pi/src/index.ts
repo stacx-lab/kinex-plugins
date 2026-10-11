@@ -2,22 +2,26 @@ import { readFile } from "node:fs/promises"
 import path from "node:path"
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent"
 import { SessionManager } from "@earendil-works/pi-coding-agent"
-import { composeContributions, coreContribution, type KinexCapabilities, type KinexContribution } from "@kinex/core/integration"
-import type { KinexRuntime } from "@kinex/core"
+import { composeContributions, type KinexCapabilities } from "@kinex/core/integration"
+import { defaultComposition, type KinexComposition } from "./composition.ts"
+import { setupPermissionDefaults } from "@kinex/setup"
 import { RoboticsOwner } from "./owner.ts"
 import { toolBridge, registerSkillTool } from "./tools.ts"
 import { executeCommand, registerCommands } from "./commands.ts"
 import { projectContext } from "./native-context.ts"
 import { recordingIndicator } from "./recording-indicator.ts"
 
+export type { KinexComposition } from "./composition.ts"
+
 export interface PiOptions {
-  contributions?(runtime: KinexRuntime): readonly KinexContribution[]
+  composition?: KinexComposition
 }
 
 export function createPiExtension(options: PiOptions = {}) {
   // Pi caches extension factories while rebuilding cwd-bound SDK services for
   // /new and /resume. Ownership must outlive each invocation of that factory.
-  const owner = new RoboticsOwner(false, "ask")
+  const composition = options.composition ?? defaultComposition
+  const owner = new RoboticsOwner(false, "ask", composition, options.composition ? {} : setupPermissionDefaults)
   return async (pi: ExtensionAPI) => {
     pi.registerFlag("kinex-recording", { description: "Enable model access to Kinex recording", type: "boolean", default: false })
     let capabilities: KinexCapabilities | undefined
@@ -57,7 +61,7 @@ export function createPiExtension(options: PiOptions = {}) {
         if (owner.enableRecording !== enableRecording) { await owner.dispose(); owner.enableRecording = enableRecording }
         const runtime = await owner.enter(ctx.cwd)
         owner.bind(ctx)
-        capabilities = composeContributions(options.contributions?.(runtime) ?? [coreContribution(runtime)])
+        capabilities = composeContributions(composition.contributions(runtime))
         await capabilities.tools.list()
         await capabilities.skills.list()
         if (!skillRegistered) {

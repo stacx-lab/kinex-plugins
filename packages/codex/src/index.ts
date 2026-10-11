@@ -2,8 +2,8 @@ import { AsyncLocalStorage } from "node:async_hooks"
 import { randomUUID } from "node:crypto"
 import { readFile } from "node:fs/promises"
 import path from "node:path"
-import { createKinexRuntime, PermissionDeniedError, QuestionDeclinedError, type Context, type KinexRuntime } from "@kinex/core"
-import { composeContributions, coreContribution, type KinexContribution } from "@kinex/core/integration"
+import { createKinexRuntime, PermissionDeniedError, QuestionDeclinedError, type Context } from "@kinex/core"
+import { composeContributions } from "@kinex/core/integration"
 import type { CommandContext } from "@kinex/core/commands"
 import { Server } from "@modelcontextprotocol/sdk/server/index.js"
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js"
@@ -11,11 +11,16 @@ import { CallToolRequestSchema, ListToolsRequestSchema, type CallToolResult } fr
 import { z } from "zod"
 import { interaction } from "./interaction.ts"
 import { modelResult } from "./result.ts"
+import { defaultComposition, type KinexComposition } from "./composition.ts"
+import { setupPermissionDefaults } from "@kinex/setup"
+import { version } from "./version.ts"
+
+export type { KinexComposition } from "./composition.ts"
 
 export interface CodexOptions {
   directory: string
   enableRecording?: boolean
-  contributions?(runtime: KinexRuntime): readonly KinexContribution[]
+  composition?: KinexComposition
   diagnostic?(message: string): void
 }
 const discoveryInput = z.object({ skill: z.string().optional(), workflow: z.string().optional(), arguments: z.string().default("") }).strict()
@@ -28,7 +33,9 @@ export async function createCodexAdapter(options: CodexOptions) {
   const sessionID = randomUUID()
   const lifetime = new AbortController()
   const calls = new AsyncLocalStorage<Context>()
-  const runtime = createKinexRuntime({ directory, enableRecording: options.enableRecording, host: {
+  const composition = options.composition ?? defaultComposition
+  const permissionDefaults = options.composition ? {} : setupPermissionDefaults
+  const runtime = createKinexRuntime({ builtinSkillRoots: composition.builtinSkillRoots ?? [], reservedToolNames: composition.reservedToolNames ?? [], directory, enableRecording: options.enableRecording, host: {
     ask: request => {
       const call = calls.getStore()
       if (!call) return Promise.reject(new PermissionDeniedError(request.permission))
@@ -41,13 +48,13 @@ export async function createCodexAdapter(options: CodexOptions) {
     },
   } })
   try {
-    const capabilities = composeContributions(options.contributions?.(runtime) ?? [coreContribution(runtime)])
+    const capabilities = composeContributions(composition.contributions(runtime))
     const prose = await readFile(new URL("./instructions.txt", import.meta.url), "utf8")
     const quotedDirectory = `'${directory.replaceAll("'", "'\\''")}'`
-    const translate = (text: string) => text.replace(/(?<![\w/.-])\/(devices|load|unload|reload|ping|stop|unregister|record|onboarding|register|calibrate)(?![\w/-])/g,
+    const translate = (text: string) => text.replace(/(?<![\w/.-])\/(devices|load|unload|ping|stop|unregister|record|onboarding|register|calibrate)(?![\w/-])/g,
       (_, name: string) => `kinex-codex control --directory ${quotedDirectory} ${name}`)
     const initial = await capabilities.context()
-    const server = new Server({ name: "kinex", version: "0.8.1" }, {
+    const server = new Server({ name: "kinex", version }, {
       capabilities: { tools: {} }, instructions: `${prose}\n\n${translate(initial.instructions)}`,
     })
     let previous: Record<string, string> = {}
@@ -83,7 +90,7 @@ export async function createCodexAdapter(options: CodexOptions) {
         abort.throwIfAborted()
         if (epoch !== generation) throw new Error("Kinex queued operation cancelled; wait for user direction")
         controllers.add(controller)
-        const call: Context = { directory, sessionID, abort, ...interaction(server, directory, abort) }
+        const call: Context = { directory, sessionID, abort, ...interaction(server, directory, abort, permissionDefaults) }
         try {
           const result = await calls.run(call, () => fn(call))
           abort.throwIfAborted()

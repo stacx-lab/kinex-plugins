@@ -6,7 +6,7 @@ function hasChildren(component: Component): component is Component & { children:
   return "children" in component && Array.isArray(component.children)
 }
 
-// Pi 0.86 mounts the footer container last in both terminal modes. Capture its
+// Pi 1.1 mounts the footer container last in both terminal modes. Capture its
 // existing component through the public TUI tree: setFooter's factory otherwise
 // exposes only data, not the built-in renderer. Keep that renderer (and its live
 // session/settings) rather than duplicating Pi's directory, model or usage logic.

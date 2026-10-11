@@ -1,7 +1,7 @@
 import { test, after } from 'node:test'
 import assert from 'node:assert/strict'
 import path from 'node:path'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, writeFile, stat, readFile } from 'node:fs/promises'
 import { setTimeout as delay } from 'node:timers/promises'
 import { isolate, fakeProvider, workspace, seed } from '../../../test/helpers.mjs'
 const isolation = await isolate()
@@ -16,13 +16,13 @@ async function fixture(t, contributions, uiContext) {
   const fake = await fakeProvider(t, isolation.root)
   const agentDir = path.join(isolation.root, 'config/agent')
   let runtime
-  const factory = createPiExtension({ contributions: value => { runtime = value; return contributions?.(value) ?? [coreContribution(value)] } })
+  const factory = contributions === null ? createPiExtension() : createPiExtension({ composition: { contributions: value => { runtime = value; return contributions?.(value) ?? [coreContribution(value)] } } })
   const loader = new DefaultResourceLoader({ cwd, agentDir, noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true, extensionFactories: [{ name: 'kinex-test', factory }] })
   await loader.reload()
   const result = await createAgentSession({ cwd, agentDir, resourceLoader: loader, sessionManager: SessionManager.create(cwd, path.join(cwd, 'sessions')) })
   assert.deepEqual(result.extensionsResult.errors, [])
   await result.session.bindExtensions({ mode: uiContext ? 'interactive' : 'print', uiContext, onError: error => { throw new Error(error.error) } })
-  t.after(async () => { await result.session.abort(); await runtime?.dispose(); result.session.dispose() })
+  t.after(async () => { await result.session.abort(); await result.session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" }); await runtime?.dispose(); result.session.dispose() })
   return { cwd, fake, session: result.session, get runtime() { return runtime } }
 }
 
@@ -168,7 +168,7 @@ test('native Pi factory handoff retains a same-workspace runtime and disposes it
     // Native Pi caches factories within a cwd, then recreates them across cwd changes.
     if (cachedCwd !== cwd) {
       cachedCwd = cwd
-      factory = createPiExtension({ contributions: value => { runtime = value; return [coreContribution(value)] } })
+      factory = createPiExtension({ composition: { contributions: value => { runtime = value; return [coreContribution(value)] } } })
     }
     const services = await createAgentSessionServices({ cwd, agentDir, resourceLoaderOptions: { noExtensions: true, noSkills: true, noThemes: true, noPromptTemplates: true, extensionFactories: [{ name: 'kinex-native', factory }] } })
     return { ...await createAgentSessionFromServices({ services, sessionManager, sessionStartEvent }), services, diagnostics: services.diagnostics }
@@ -194,4 +194,30 @@ test('native Pi factory handoff retains a same-workspace runtime and disposes it
   await host.switchSession(target.session.sessionFile)
   assert.throws(() => beforeSwitch.devices.list(), /disposed/)
   assert.equal(runtime.directory, target.cwd)
+})
+
+
+test('native Pi default composition provides setup workflows and permission defaults without initializing Python', async t => {
+  const f = await fixture(t, null)
+  const tools = f.session.getAllTools().map(tool => tool.name)
+  assert.ok(tools.includes('setup_plan'))
+  assert.ok(tools.includes('calib_compute'))
+  assert.ok(!tools.includes('record'))
+  await assert.rejects(stat(path.join(f.cwd, '.kinex')), { code: 'ENOENT' })
+  f.fake.steps.push({ tool: 'setup_plan', args: { action: 'save', revision: 0, plan: { version: 1, nodes: [], task: null } } }, { text: 'saved' })
+  await f.session.prompt('Save an empty setup plan')
+  assert.deepEqual(JSON.parse(await readFile(path.join(f.cwd, '.kinex/setup/plan.json'), 'utf8')).nodes, [])
+  await writeFile(path.join(f.cwd, 'kinex.json'), JSON.stringify({ permission: { setup_plan: 'deny' } }))
+  f.fake.steps.push({ tools: [
+    { name: 'setup_plan', args: { action: 'select', revision: 1, task: null } },
+    { name: 'write', args: { path: 'must-not-exist', content: 'denied' } },
+  ] })
+  await f.session.prompt('Try changing the denied plan')
+  await assert.rejects(stat(path.join(f.cwd, 'must-not-exist')), { code: 'ENOENT' })
+  await assert.rejects(stat(path.join(f.cwd, '.kinex/python')), { code: 'ENOENT' })
+  await f.session.prompt('/onboarding inspect existing workspace')
+  const receivedWorkflow = () => f.fake.requests.some(request => JSON.stringify(request.messages).includes('inspect existing workspace'))
+  for (let i = 0; i < 100 && !receivedWorkflow(); i++) await delay(10)
+  await f.session.waitForIdle()
+  assert.ok(receivedWorkflow(), 'onboarding workflow must reach the model')
 })

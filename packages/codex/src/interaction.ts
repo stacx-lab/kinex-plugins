@@ -1,7 +1,7 @@
-import { PermissionDeniedError, QuestionDeclinedError, kinexPermissionAction, loadPermissionRules, type Context } from "@kinex/core"
+import { PermissionDeniedError, QuestionDeclinedError, kinexPermissionAction, loadPermissionRules, type Context, type PermissionAction } from "@kinex/core"
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js"
 
-export function interaction(server: Server, directory: string, signal: AbortSignal): Pick<Context, "ask" | "questions"> {
+export function interaction(server: Server, directory: string, signal: AbortSignal, defaults: Record<string, PermissionAction> = {}): Pick<Context, "ask" | "questions"> {
   const form = async (message: string, properties: Record<string, { type: "boolean"; title: string } | { type: "string"; title: string }>, required: string[]) => {
     signal.throwIfAborted()
     const capability = server.getClientCapabilities()?.elicitation
@@ -13,7 +13,7 @@ export function interaction(server: Server, directory: string, signal: AbortSign
   return {
     async ask(request) {
       signal.throwIfAborted()
-      const action = kinexPermissionAction(request.permission, await loadPermissionRules(directory))
+      const action = kinexPermissionAction(request.permission, await loadPermissionRules(directory), defaults)
       if (action === "allow") return
       if (action === "deny") throw new PermissionDeniedError(request.permission)
       const answer = await form(`${request.permission}: ${request.description}`, { allow: { type: "boolean", title: "Allow this operation?" } }, ["allow"])

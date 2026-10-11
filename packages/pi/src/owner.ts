@@ -1,5 +1,5 @@
 import path from "node:path"
-import { createKinexRuntime, type KinexRuntime } from "@kinex/core"
+import { createKinexRuntime, type KinexRuntime, type RuntimeOptions, type PermissionAction } from "@kinex/core"
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent"
 import { Interaction, type Mode } from "./interaction.ts"
 
@@ -10,13 +10,18 @@ export class RoboticsOwner {
   failure?: Error
   private trace?: ExtensionContext["sessionManager"]
   private observed = new Set<string>()
-  constructor(public enableRecording: boolean, mode: Mode) { this.interaction = new Interaction(mode) }
+  constructor(
+    public enableRecording: boolean,
+    mode: Mode,
+    private readonly composition: Pick<RuntimeOptions, "builtinSkillRoots" | "reservedToolNames"> = {},
+    defaults: Record<string, PermissionAction> = {},
+  ) { this.interaction = new Interaction(mode, defaults) }
 
   async enter(cwd: string): Promise<KinexRuntime> {
     const directory = path.resolve(cwd)
     if (this.runtime?.directory === directory) return this.runtime
     await this.dispose()
-    this.runtime = createKinexRuntime({ directory, enableRecording: this.enableRecording, host: {
+    this.runtime = createKinexRuntime({ directory, builtinSkillRoots: this.composition.builtinSkillRoots ?? [], reservedToolNames: this.composition.reservedToolNames ?? [], enableRecording: this.enableRecording, host: {
       ...this.interaction.host,
       exportTrace: async (sessionID, range) => {
         if (this.trace?.getSessionId() !== sessionID) return { sessionID, messages: [] }

@@ -3,6 +3,7 @@ import { parseArgs } from "node:util"
 import { createInterface } from "node:readline/promises"
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod"
+import { version } from "./version.ts"
 import { createCodexAdapter } from "./index.ts"
 import { endpoints, requestCommand, serveCommands } from "./ipc.ts"
 
@@ -16,7 +17,7 @@ export async function main(args = process.argv.slice(2)) {
     directory: { type: "string" }, instance: { type: "string" },
     "enable-recording": { type: "boolean" }, help: { type: "boolean", short: "h" }, version: { type: "boolean" },
   } })
-  if (values.version) { console.log("0.8.1"); return }
+  if (values.version) { console.log(version); return }
   if (values.help || !positionals.length) {
     console.log("kinex-codex serve --directory PATH [--enable-recording]\nkinex-codex control --directory PATH [--instance ID] <command> [arguments]\nkinex-codex control --directory PATH [--instance ID] --help\n\nControl commands execute on the existing Codex server, without a model.\nUse 'control ... commands' to list Core commands, or 'control ... instances' to select a server.")
     return

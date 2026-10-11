@@ -23,10 +23,10 @@ jobs:
       - name: Check plugin versions and core snapshot
         run: node script/release.mjs --check --tag "$GITHUB_REF_NAME"
       - run: npm ci
-      - run: npm run typecheck
       - run: npm run core:check
+      - run: npm run typecheck
       - run: npm test
-      - name: Pack plugins and the core snapshot
+      - name: Pack plugins and core and setup snapshots
         run: node script/release.mjs "$RUNNER_TEMP/kinex-plugins-release" --tag "$GITHUB_REF_NAME"
       - uses: actions/upload-artifact@v4
         with:
@@ -50,4 +50,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" \
-            --generate-notes dist/releases/*.tgz dist/releases/core.json dist/releases/SHA256SUMS
+            --generate-notes dist/releases/*.tgz dist/releases/core.json dist/releases/setup.json dist/releases/SHA256SUMS

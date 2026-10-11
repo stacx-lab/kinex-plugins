@@ -22,8 +22,8 @@ jobs:
         with:
           python-version: '3.12'
       - run: npm ci
-      - run: npm run typecheck
       - run: npm run core:check
+      - run: npm run typecheck
       # Verify native adapters with real host loaders and isolated package installs.
       - run: npm test
       - run: node script/release.mjs --check
