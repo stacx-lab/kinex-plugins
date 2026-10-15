@@ -1,0 +1,9 @@
+{
+  "name": "kinex",
+  "marketplace": "kinex-plugins",
+  "description": "Robotics tools, onboarding and calibration with an explicitly started Kinex runtime",
+  "author": "Stacx Lab",
+  "repository": "https://github.com/stacx-lab/kinex-plugins",
+  "packages": ["mcp", "pi"],
+  "hosts": { "pi": "1.2.0", "codex": "0.162.1", "claude": "2.1.299" }
+}

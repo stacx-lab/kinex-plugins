@@ -11,7 +11,7 @@ test('snapshot validation rejects corrupted archives and mismatched versions or 
   const directory = await workspace(t)
   await cp(path.join(root, 'vendor'), path.join(directory, 'vendor'), { recursive: true })
   await cp(path.join(root, 'package.json'), path.join(directory, 'package.json'))
-  for (const name of ['pi', 'opencode', 'codex']) {
+  for (const name of ['mcp']) {
     await mkdir(path.join(directory, 'packages', name), { recursive: true })
     await cp(path.join(root, 'packages', name, 'package.json'), path.join(directory, 'packages', name, 'package.json'))
   }

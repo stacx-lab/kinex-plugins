@@ -1,0 +1,38 @@
+{
+  "name": "@kinex/mcp",
+  "version": "1.0.0",
+  "description": "Shared Kinex MCP runtime and local user controls",
+  "type": "module",
+  "engines": {
+    "node": ">=22.22.2"
+  },
+  "bin": {
+    "kinex-mcp": "bin/kinex-mcp.mjs"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./control": {
+      "types": "./dist/ipc.d.ts",
+      "import": "./dist/ipc.js"
+    },
+    "./interaction": {
+      "types": "./dist/bridge.d.ts",
+      "import": "./dist/bridge.js"
+    },
+    "./cli": "./bin/kinex-mcp.mjs"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "README.md"
+  ],
+  "dependencies": {
+    "@kinex/core": "1.0.0",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "zod": "^4.4.3",
+    "@kinex/setup": "1.0.0"
+  }
+}

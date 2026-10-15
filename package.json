@@ -7,32 +7,31 @@
     "node": ">=22.22.2"
   },
   "workspaces": [
-    "packages/*"
+    "packages/mcp",
+    "packages/pi"
   ],
   "scripts": {
     "build": "node script/build.mjs",
     "typecheck": "npm run build",
-    "test": "node --test test/*.test.mjs packages/pi/test/*.test.mjs packages/opencode/test/*.test.mjs packages/codex/test/*.test.mjs",
+    "test": "node --test test/*.test.mjs packages/mcp/test/*.test.mjs packages/pi/test/*.test.mjs",
     "test:pi": "node --test packages/pi/test/*.test.mjs",
-    "test:opencode": "node --test packages/opencode/test/*.test.mjs",
-    "test:codex": "node --test packages/codex/test/*.test.mjs",
     "core:refresh": "node script/refresh-core.mjs",
     "core:check": "node script/core-snapshot.mjs",
-    "pack": "node script/release.mjs"
+    "pack": "node script/release.mjs",
+    "test:mcp": "node --test packages/mcp/test/*.test.mjs",
+    "generate": "node script/generate.mjs",
+    "kinex:sync": "node script/sync.mjs",
+    "benchmark": "node script/benchmark.mjs"
   },
   "devDependencies": {
+    "@anthropic-ai/claude-code": "2.1.299",
+    "@earendil-works/pi-ai": "1.2.0",
+    "@earendil-works/pi-coding-agent": "1.2.0",
+    "@earendil-works/pi-tui": "1.2.0",
+    "@kinex/core": "file:vendor/kinex-core-1.0.0-6f2085937558e861.tgz",
+    "@kinex/setup": "file:vendor/kinex-setup-1.0.0-4d1970bbab910ce9.tgz",
     "@openai/codex": "0.162.1",
-    "@opentui/core": "0.4.5",
-    "@opentui/keymap": "0.4.5",
-    "@opentui/solid": "0.4.5",
     "@types/node": "22.20.4",
-    "opencode-ai": "1.19.0",
-    "typescript": "5.9.3",
-    "@earendil-works/pi-ai": "1.1.0",
-    "@earendil-works/pi-coding-agent": "1.1.0",
-    "@earendil-works/pi-tui": "1.1.0",
-    "typebox": "1.3.27",
-    "@kinex/core": "file:vendor/kinex-core-1.0.0-765d2895c23318e7.tgz",
-    "@kinex/setup": "file:vendor/kinex-setup-1.0.0-1435af1dffd04bd9.tgz"
+    "typescript": "5.9.3"
   }
 }

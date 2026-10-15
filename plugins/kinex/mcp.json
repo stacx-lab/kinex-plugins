@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "kinex": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@kinex/mcp@1.0.0",
+        "serve"
+      ]
+    }
+  }
+}

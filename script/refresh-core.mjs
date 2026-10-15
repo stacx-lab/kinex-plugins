@@ -34,7 +34,7 @@ try {
   const project = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'))
   for (const { snapshot } of snapshots) project.devDependencies[snapshot.name] = `file:vendor/${snapshot.file}`
   await writeFile(path.join(root, 'package.json'), JSON.stringify(project, null, 2) + '\n')
-  for (const name of ['pi', 'opencode', 'codex']) {
+  for (const name of ['mcp']) {
     const location = path.join(root, 'packages', name, 'package.json')
     const plugin = JSON.parse(await readFile(location, 'utf8'))
     for (const { snapshot } of snapshots) plugin.dependencies[snapshot.name] = snapshot.version

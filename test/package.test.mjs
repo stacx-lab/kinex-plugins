@@ -2,52 +2,76 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { mkdtemp, readFile, rm, rename, stat } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { readFile, rename, stat, cp, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-const exec = promisify(execFile)
-const root = fileURLToPath(new URL('../', import.meta.url))
+import { workspace } from './helpers.mjs'
+import { generate } from '../script/generate.mjs'
+const exec = promisify(execFile), root = fileURLToPath(new URL('../', import.meta.url))
 
-for (const name of ['pi', 'opencode']) test(`${name} tarball installs alone with core and setup snapshots and relocates`, { timeout: 180000 }, async t => {
-  const directory = await mkdtemp(path.join(tmpdir(), 'kinex-plugins-install-'))
-  t.after(() => rm(directory, { recursive: true, force: true }))
-  const pack = async cwd => {
-    const { stdout } = await exec('npm', ['pack', '--json', '--pack-destination', directory], { cwd })
+test('Pi package installs with shared MCP and relocates without standalone or other adapters', { timeout: 180000 }, async t => {
+  const directory = await workspace(t)
+  const pack = async name => {
+    const { stdout } = await exec('npm', ['pack', '--json', '--pack-destination', directory], { cwd: path.join(root, 'packages', name) })
     return path.join(directory, JSON.parse(stdout)[0].filename)
   }
-  const snapshot = JSON.parse(await readFile(path.join(root, 'vendor/core.json'), 'utf8'))
-  const core = path.join(root, 'vendor', snapshot.file)
-  const setupSnapshot = JSON.parse(await readFile(path.join(root, 'vendor/setup.json'), 'utf8'))
-  const setup = path.join(root, 'vendor', setupSnapshot.file)
-  const plugin = await pack(path.join(root, 'packages', name))
-  const env = { ...process.env, KINEX_CONFIG_DIR: path.join(directory, 'config'), KINEX_DATA_DIR: path.join(directory, 'data') }
-  const plugins = path.join(directory, 'plugins')
-  await exec('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--prefix', plugins, core, setup, plugin,
-    ...(name === 'pi' ? ['@earendil-works/pi-coding-agent@1.1.0'] : [])])
-  const movedPlugins = path.join(directory, 'moved-plugins')
-  await rename(plugins, movedPlugins)
-  await assert.rejects(stat(path.join(movedPlugins, 'node_modules/kinex')), { code: 'ENOENT' })
-  for (const other of ['pi', 'opencode', 'codex'].filter(value => value !== name)) {
-    await assert.rejects(stat(path.join(movedPlugins, 'node_modules/@kinex', other)), { code: 'ENOENT' })
-  }
+  const snapshots = await Promise.all(['core', 'setup'].map(async name => path.join(root, 'vendor', JSON.parse(await readFile(path.join(root, 'vendor', `${name}.json`), 'utf8')).file)))
+  const packages = await Promise.all(['mcp', 'pi'].map(pack))
+  const install = path.join(directory, 'install'), moved = path.join(directory, 'relocated')
+  await exec('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--prefix', install, ...snapshots, ...packages, '@earendil-works/pi-coding-agent@1.2.0'])
+  await rename(install, moved)
+  for (const name of ['kinex', '@kinex/codex', '@kinex/opencode']) await assert.rejects(stat(path.join(moved, 'node_modules', name)), { code: 'ENOENT' })
   const { stdout } = await exec(process.execPath, ['--input-type=module', '--eval', `
     import assert from 'node:assert/strict';
-    ${name === 'pi' ? "import pi from '@kinex/pi'; assert.equal(typeof pi, 'function');" : "import server from '@kinex/opencode/server'; import tui from '@kinex/opencode/tui'; assert.equal(typeof server.server, 'function'); assert.equal(typeof tui.tui, 'function');"}
-    import { createKinexRuntime } from '@kinex/core';
-    import { coreContribution, composeContributions } from '@kinex/core/integration';
-    import { createKinexSetup, setupContribution, setupSkillRoots, setupToolNames } from '@kinex/setup';
-    const runtime = createKinexRuntime({ directory: process.cwd(), builtinSkillRoots: setupSkillRoots, reservedToolNames: setupToolNames });
-    try {
-      const capabilities = composeContributions([coreContribution(runtime), setupContribution(createKinexSetup(runtime))]);
-      assert.ok((await capabilities.skills.list()).some(skill => skill.name === 'onboard-ros2'));
-      assert.ok((await capabilities.skills.load('calibrate-tcp-offset')).content.length > 100);
-      assert.ok((await capabilities.tools.list()).tools.some(tool => tool.name === 'setup_plan'));
-      assert.ok(capabilities.commands.some(command => command.name === 'onboarding'));
-      assert.equal((await capabilities.tools.call('setup_plan', { action: 'read' }, { directory: process.cwd(), sessionID: 'package', abort: new AbortController().signal, ask: async () => {}, questions: async () => ({}) })).isError, undefined);
-      assert.ok((await capabilities.tools.list()).tools.some(tool => tool.name === 'device'));
-      console.log((await capabilities.commands.find(command => command.name === 'devices').execute('', { sessionID: 'package', confirm: async () => false })).text);
-    } finally { await runtime.dispose(); }
-  `], { cwd: movedPlugins, env, timeout: 20000 })
-  assert.match(stdout, /No devices/)
+    import pi from '@kinex/pi';
+    import { createKinexMcpServer } from '@kinex/mcp';
+    assert.equal(typeof pi, 'function');
+    const server = await createKinexMcpServer({ directory: process.cwd() });
+    assert.equal((await server.status()).state, 'inactive');
+    assert.equal(server.runtime, undefined);
+    await server.dispose();
+    console.log(import.meta.resolve('@kinex/mcp/cli'));
+  `], { cwd: moved, timeout: 20000 })
+  assert.ok(stdout.includes('relocated'))
+  assert.ok((await readFile(path.join(moved, 'node_modules/@kinex/pi/skills/kinex-start/SKILL.md'), 'utf8')).includes('kinex_start'))
+})
+
+test('host bundles are reproducible, version-pinned and reference existing skills and MCP config', async () => {
+  await generate(root, true)
+  const { version } = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'))
+  for (const host of ['claude', 'codex']) {
+    const manifest = JSON.parse(await readFile(path.join(root, `plugins/kinex/.${host}-plugin/plugin.json`), 'utf8'))
+    assert.equal(manifest.version, version)
+    await stat(path.join(root, 'plugins/kinex', manifest.skills))
+    const mcp = JSON.parse(await readFile(path.join(root, 'plugins/kinex', manifest.mcpServers), 'utf8'))
+    assert.ok(mcp.mcpServers.kinex.args.includes(`@kinex/mcp@${version}`))
+    assert.ok(!mcp.mcpServers.kinex.args.some(arg => arg.includes('@latest')))
+  }
+})
+
+test('Codex installs the generated marketplace plugin with its skills and MCP configuration', { timeout: 30000 }, async t => {
+  const directory = await workspace(t)
+  const binary = process.env.KINEX_CODEX_BINARY ?? path.join(root, 'node_modules/.bin/codex')
+  const run = (...args) => exec(binary, ['plugin', ...args], { env: { PATH: process.env.PATH, CODEX_HOME: directory }, cwd: directory, timeout: 20000 })
+  await run('marketplace', 'add', root)
+  const result = JSON.parse((await run('add', 'kinex@kinex-plugins', '--json')).stdout)
+  assert.equal(result.pluginId, 'kinex@kinex-plugins')
+  const installed = JSON.parse((await run('list', '--json')).stdout).installed
+  assert.equal(installed.find(plugin => plugin.pluginId === result.pluginId)?.enabled, true)
+  await stat(path.join(result.installedPath, '.mcp.json'))
+  assert.match(await readFile(path.join(result.installedPath, 'skills/kinex-start/SKILL.md'), 'utf8'), /kinex_start/)
+})
+
+
+test('generation propagates supporting skill files and removes retired skills', async t => {
+  const directory = await workspace(t)
+  for (const file of ['package.json', 'release.json', 'assets']) await cp(path.join(root, file), path.join(directory, file), { recursive: true })
+  await writeFile(path.join(directory, 'assets/skills/kinex-start/example.txt'), 'supporting content')
+  await generate(directory)
+  assert.equal(await readFile(path.join(directory, 'packages/pi/skills/kinex-start/example.txt'), 'utf8'), 'supporting content')
+  await rm(path.join(directory, 'assets/skills/kinex-start'), { recursive: true })
+  await assert.rejects(generate(directory, true), /Obsolete generated artifact/)
+  await generate(directory)
+  await assert.rejects(stat(path.join(directory, 'plugins/kinex/skills/kinex-start/SKILL.md')), { code: 'ENOENT' })
+  await generate(directory, true)
 })

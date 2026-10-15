@@ -20,7 +20,7 @@ export async function packageSnapshots(directory = root) {
     assert.equal(packed.name, snapshot.name)
     assert.equal(packed.version, snapshot.version)
     assert.equal(manifest.devDependencies[snapshot.name], `file:vendor/${snapshot.file}`)
-    for (const pluginName of ['pi', 'opencode', 'codex']) {
+    for (const pluginName of ['mcp']) {
       const plugin = JSON.parse(await readFile(path.join(directory, 'packages', pluginName, 'package.json'), 'utf8'))
       assert.equal(plugin.dependencies[snapshot.name], snapshot.version, `${pluginName} must use the ${name} snapshot version`)
     }

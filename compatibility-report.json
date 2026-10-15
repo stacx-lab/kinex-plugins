@@ -1,0 +1,54 @@
+{
+  "snapshots": [
+    {
+      "name": "@kinex/core",
+      "version": "1.0.0",
+      "file": "kinex-core-1.0.0-6f2085937558e861.tgz",
+      "sha256": "6f2085937558e86195cfc3f467b7110bae60b3d317190ad44c77eae4c90330d7",
+      "source": {
+        "revision": "afeddc698d14ea9fb5ae0e88f51fecd89000dec4",
+        "dirty": false,
+        "capturedAt": "2026-10-14T23:08:47.636Z"
+      }
+    },
+    {
+      "name": "@kinex/setup",
+      "version": "1.0.0",
+      "file": "kinex-setup-1.0.0-4d1970bbab910ce9.tgz",
+      "sha256": "4d1970bbab910ce90175183a818ee4a53537637e4efae6a44f116ac3ffc25e85",
+      "source": {
+        "revision": "afeddc698d14ea9fb5ae0e88f51fecd89000dec4",
+        "dirty": false,
+        "capturedAt": "2026-10-14T23:08:47.636Z"
+      }
+    }
+  ],
+  "changes": {
+    "tools": {
+      "added": [],
+      "removed": [],
+      "changed": []
+    },
+    "skills": {
+      "added": [],
+      "removed": [],
+      "changed": []
+    },
+    "workflows": {
+      "added": [],
+      "removed": [],
+      "changed": []
+    }
+  },
+  "checks": [
+    "snapshot integrity",
+    "typecheck/build",
+    "shared and host tests",
+    "packaging"
+  ],
+  "hosts": {
+    "pi": "1.2.0",
+    "codex": "0.162.1",
+    "claude": "2.1.299"
+  }
+}

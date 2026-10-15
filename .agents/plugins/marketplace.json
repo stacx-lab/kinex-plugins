@@ -1,0 +1,20 @@
+{
+  "name": "kinex-plugins",
+  "interface": {
+    "displayName": "Kinex"
+  },
+  "plugins": [
+    {
+      "name": "kinex",
+      "source": {
+        "source": "local",
+        "path": "./plugins/kinex"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

@@ -1,28 +1,30 @@
 # Kinex plugins
 
-Read README.md for development, dependency refreshes and releases, and PLAN.md
-for current progress. This project owns native Pi, OpenCode and Codex adapters.
+Read README.md for architecture, development, updates and release procedures.
+This project ships one shared MCP adapter, Pi UI glue and Claude/Codex plugin
+bundles. OpenCode is excluded from the active workspaces and release graph.
 
 - Device operation belongs to `@kinex/core`; onboarding/calibration belongs to
-  `@kinex/setup`. Both are consumed from checked-in snapshots under
-  `vendor/`. Never copy or edit core implementation here or import sibling source
-  files. Refresh both snapshots explicitly with `npm run core:refresh -- PATH`.
-- Each host adapter owns host permissions, session/context projection, lifecycle
-  binding and presentation. Use published host SDKs; do not reimplement providers,
-  coding tools, agent loops or TUI frameworks.
-- Standalone Kinex owns separate Pi integration code. Do not constrain its SDK
-  versions or change the sibling project unless the user requests that work.
-- Preserve permission-checked model tools, direct user commands, cancellation,
-  recording ownership and disposal. Never terminate borrowed services. Core
-  discovery remains inert and Python initialization remains lazy.
-- Keep stable instructions separate from dynamic context. Refresh tools within
-  tasks and restore context after compaction without bypassing host permissions.
+  `@kinex/setup`. Consume checked-in snapshots under `vendor/`. Never copy core
+  implementation, import sibling source or modify the standalone Kinex project.
+- `packages/mcp/src/kinex.ts` is the runtime-value import boundary to core/setup.
+  Keep runtime construction lazy, Python lazy and capability discovery dynamic.
+- Host adapters own only host transport/UI/lifecycle integration. Use published
+  host APIs; do not duplicate agent loops, coding tools or robotics state.
+- Preserve permission-checked model tools, trusted direct user commands,
+  cancellation, recording ownership and disposal. Never terminate borrowed
+  services. Host connection must not activate robotics.
+- Stable skills/instructions must stay small. Load current schemas/workflows and
+  restore dynamic context after resume/compaction through shared discovery.
+- Edit canonical skills in `assets/skills` and release metadata in `release.json`;
+  regenerate copies and manifests with `npm run generate`.
+- Use `npm run kinex:sync -- PATH` for validated snapshot migrations. The low-level
+  `core:refresh` command intentionally updates in place and is not transactional.
 - Use TypeScript ESM, named imports, small functions and typed errors. Imported
-  prose belongs in sibling `.txt` files. Do not introduce compatibility shims
-  without a supported host version that needs them.
+  prose belongs in sibling `.txt` files. No compatibility aliases for retired APIs.
 
 Run `npm run core:check`, `npm run typecheck`, then `npm test` sequentially.
-Build output is replaced; never rebuild while consumer tests run. Use Node from
-`.nvmrc` and Python 3 for POSIX PTY tests. Run `npm run build` and
-`npm run pack -- OUTPUT_DIRECTORY` for packaging. Do not publish or commit
-without a user request. Preserve credentials, workspace data and recordings.
+Never rebuild while consumer tests run. Use Node from `.nvmrc` and Python 3 for
+POSIX PTY tests. Pack outside this repository with `npm run pack -- DIRECTORY`.
+Do not publish or commit without a user request. Preserve credentials, workspace
+data and recordings. Tests must isolate host configs and use local fake providers.

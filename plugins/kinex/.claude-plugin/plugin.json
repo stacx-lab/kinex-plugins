@@ -1,0 +1,12 @@
+{
+  "name": "kinex",
+  "version": "1.0.0",
+  "description": "Robotics tools, onboarding and calibration with an explicitly started Kinex runtime",
+  "author": {
+    "name": "Stacx Lab"
+  },
+  "repository": "https://github.com/stacx-lab/kinex-plugins",
+  "license": "Apache-2.0",
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json"
+}

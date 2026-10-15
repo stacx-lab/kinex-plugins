@@ -1,39 +1,38 @@
-# Current work
+# Shared Kinex plugin release
 
-## Flat end-effector actions
+Implemented architecture: one host-managed stdio MCP package; thin Pi UI glue;
+generated Claude Code/Codex plugin bundles and shared skills. Connecting the host
+keeps robotics inactive until explicit Start Kinex. No manually managed daemon.
 
-- [x] Refresh core for flat gripper/suction action sequences.
-- [x] Verify snapshot integrity, typecheck and all 36 host tests.
+## Implementation
 
-## Track inline Python
+- [x] Replace the unreleased Codex-specific adapter with `@kinex/mcp`.
+- [x] Keep core/setup behind one lazy runtime import boundary.
+- [x] Add explicit start/status/end/restart with serialized work, urgent stop,
+      cancellation, permission handling and owned-resource cleanup.
+- [x] Discover live tools, schemas, skills, workflows and scoped context dynamically.
+- [x] Preserve images, custom tools, recording opt-in and trusted user controls.
+- [x] Replace Pi's duplicated runtime adapter with native MCP registration and dialogs.
+- [x] Generate host manifests, marketplaces and skill copies from canonical sources;
+      propagate supporting files and remove retired skills.
+- [x] Exclude OpenCode from builds, tests and releases.
+- [x] Refresh content-addressed core/setup snapshots with source provenance.
+- [x] Add staged `kinex:sync`, catalog compatibility reports, output concurrency
+      checks, installation rollback and automatic local installation/build.
+- [x] Document installation, development, updates, performance and release artifacts.
 
-- [x] Refresh the core snapshot for inline track stages.
-- [x] Verify integrity, typecheck and all 36 host tests.
-- [x] Execute all four inline stages through the installed core with mock world time.
+## Verification
 
-## Builtin tool composition
+- [x] Snapshot integrity and TypeScript builds.
+- [x] Real Pi loader, Claude plugin loader, Codex MCP and Codex marketplace install.
+- [x] Shared lifecycle, approval, cancellation, recording and contribution tests.
+- [x] Relocated MCP and Pi tarball installs without a sibling Kinex checkout.
+- [x] Claude/Codex manifest validation and validation of all seven canonical skills.
+- [x] Successful end-to-end Kinex sync including staged tests and installation.
+- [x] Intentionally remove `createKinexRuntime` from a temporary package's public
+      types: sync rejects it at typecheck and preserves all working project files.
+- [x] Cold import/start/end timing and process-memory measurements on Linux x64.
 
-- [x] Update Pi summaries for devices and servo.
-- [x] Refresh the core snapshot; integrity, typecheck and all 36 host tests passed.
-
-## World-time control
-
-- [x] Refresh the packed core snapshot to 0.8.2 for the LIBERO workspace.
-- [x] Validate snapshot integrity, typecheck and all 36 host tests.
-
-## Separate plugin project
-
-- [x] Move Pi, OpenCode and Codex integrations with their public entrypoints.
-- [x] Add independent npm installation, builds, tests and release workflows.
-- [x] Consume a packed core snapshot with integrity and source provenance.
-- [x] Keep existing host versions and plugin APIs unchanged.
-- [x] Validate clean installs, real host loading, lifecycle and relocated packages.
-
-Core updates are explicit. Core source and standalone remain in Kinex. This
-migration does not upgrade any host SDK or publish packages.
-
-Validation: clean `npm ci`, snapshot integrity, typecheck/build and all 36 tests
-passed in an isolated copy with no sibling Kinex checkout. Tests include real Pi,
-OpenCode and Codex hosts and separate relocated installs for all three plugins.
-Packaging produced the three plugins, core snapshot, provenance and checksums.
-LIBERO launch paths were updated and checked without restarting hosts.
+Release remains local and unpublished. npm package publication and a macOS smoke
+run are release steps; no physical robot or paid model API was used for validation.
+See `compatibility-report.json` for the last accepted snapshots and host versions.

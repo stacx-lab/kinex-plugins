@@ -1,0 +1,14 @@
+{
+  "name": "kinex-plugins",
+  "owner": {
+    "name": "Stacx Lab"
+  },
+  "plugins": [
+    {
+      "name": "kinex",
+      "source": "./plugins/kinex",
+      "description": "Robotics tools, onboarding and calibration with an explicitly started Kinex runtime",
+      "version": "1.0.0"
+    }
+  ]
+}
