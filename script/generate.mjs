@@ -18,7 +18,7 @@ export async function generatedFiles(directory = root) {
   const files = new Map(), json = value => JSON.stringify(value, null, 2) + '\n'
   const plugin = `plugins/${release.name}`
   const identity = { name: release.name, version, description: release.description, author: { name: release.author }, repository: release.repository, license: 'Apache-2.0' }
-  const mcp = { mcpServers: { kinex: { command: 'npx', args: ['-y', `@kinex/mcp@${version}`, 'serve'] } } }
+  const mcp = { mcpServers: { kinex: { command: 'npx', args: ['-y', `@kinex/mcp@${version}`, 'serve', '--permission-mode', 'host'] } } }
   files.set(`${plugin}/plugin.json`, json(identity))
   files.set(`${plugin}/mcp.json`, json(mcp))
   files.set(`${plugin}/.mcp.json`, json(mcp))

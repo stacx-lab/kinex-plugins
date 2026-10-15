@@ -46,6 +46,7 @@ test('host bundles are reproducible, version-pinned and reference existing skill
     const mcp = JSON.parse(await readFile(path.join(root, 'plugins/kinex', manifest.mcpServers), 'utf8'))
     assert.ok(mcp.mcpServers.kinex.args.includes(`@kinex/mcp@${version}`))
     assert.ok(!mcp.mcpServers.kinex.args.some(arg => arg.includes('@latest')))
+    assert.deepEqual(mcp.mcpServers.kinex.args.slice(-3), ['serve', '--permission-mode', 'host'])
   }
 })
 

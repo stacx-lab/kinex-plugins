@@ -7,16 +7,19 @@ import { coreContribution, composeContributions } from "@kinex/core/integration"
 import { createKinexSetup, setupContribution, setupSkillRoots, setupToolNames, setupPermissionDefaults } from "@kinex/setup"
 import type { AskForm, Form, RuntimeBundle, RuntimeOptions } from "./types.ts"
 
-export async function authorizeStart(directory: string, form: AskForm, signal: AbortSignal) {
-  await permissions(directory, form, signal).ask({ permission: "runtime_start",
-    metadata: {}, description: `Start Kinex in ${directory} and restore configured loaded devices?` })
+export async function authorizeStart(options: RuntimeOptions, form: AskForm, signal: AbortSignal) {
+  await permissions(options, form, signal).ask({ permission: "runtime_start",
+    metadata: {}, description: `Start Kinex in ${options.directory} and restore configured loaded devices?` })
 }
 
-function permissions(directory: string, form: AskForm, signal: AbortSignal, defaults: Record<string, PermissionAction> = {}): Pick<Context, "ask" | "questions"> {
+function permissions(options: RuntimeOptions, form: AskForm, signal: AbortSignal, defaults: Record<string, PermissionAction> = {}): Pick<Context, "ask" | "questions"> {
   return {
     async ask(request) {
       signal.throwIfAborted()
-      const action = kinexPermissionAction(request.permission, await loadPermissionRules(directory), defaults)
+      // Core resolves explicit rules before these defaults and retains its stop exception.
+      // Host mode is selected at startup, never by a model-supplied tool argument.
+      const policy: Record<string, PermissionAction> = options.permissionMode === "host" ? { [request.permission]: "allow" } : defaults
+      const action = kinexPermissionAction(request.permission, await loadPermissionRules(options.directory), policy)
       if (action === "allow") return
       if (action === "deny") throw new PermissionDeniedError(request.permission)
       const result = await form({ message: `${request.permission}: ${request.description}`,
@@ -81,7 +84,7 @@ export function createRuntime(options: RuntimeOptions, form: AskForm): RuntimeBu
       signal.throwIfAborted()
     },
     invoke(signal, action) {
-      const context: Context = { directory: options.directory, sessionID, abort: signal, ...permissions(options.directory, form, signal, defaults) }
+      const context: Context = { directory: options.directory, sessionID, abort: signal, ...permissions(options, form, signal, defaults) }
       return calls.run(context, () => action(context))
     },
   }

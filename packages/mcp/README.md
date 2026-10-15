@@ -4,7 +4,7 @@ Shared Kinex runtime integration for Pi, Claude Code and Codex. The host starts 
 stdio process automatically. Connecting it does not start robotics.
 
 ```sh
-kinex-mcp serve [--directory /path/to/workspace] [--enable-recording]
+kinex-mcp serve [--directory /path/to/workspace] [--enable-recording] [--permission-mode kinex|host]
 ```
 
 Workspace resolution: `--directory` > `KINEX_WORKSPACE` > working directory.
@@ -32,9 +32,24 @@ Tools, custom workspace tools, skills and setup workflows are discovered from
 core/setup at request time. Full schemas and context are not injected into every
 turn. After compaction/resume, retrieve discovery and full context again.
 
-Kinex approvals and questionnaires use MCP form elicitation. Pi supplies the
-fallback dialog bridge. Noninteractive clients must explicitly configure Kinex
-permissions for unattended actions; absent interaction declines requests.
+Standalone launches default to `--permission-mode kinex`, which applies Kinex
+permission defaults and uses MCP form elicitation for approvals. Pi supplies a
+fallback dialog bridge.
+`--permission-mode host` delegates default approvals to the host's tool pipeline;
+the Pi plugin and generated Claude/Codex bundles select it automatically. This mode
+trusts the launcher to use that pipeline. It does not detect or inspect any specific
+auto-mode extension.
+
+Explicit Kinex rules are honored in both modes: `deny` blocks, `ask` prompts and
+`allow` proceeds. Malformed rules ask. Emergency stop retains its always-allowed
+Kinex policy. Questionnaires always use interaction. If an explicit ask or question
+has no available UI, it declines. `kinex_status` includes `permissionMode` even
+while inactive. Models cannot change the mode through tool arguments.
+
+Host mode removes duplicate prompts, not host review: a host-blocked call must
+never reach execution. Without host permission gates, calls proceed as they do
+for that host's other tools. Set `--permission-mode kinex` in a local Claude/Codex
+MCP configuration to restore Kinex's default approval dialogs, then restart the host.
 
 ## Direct user control
 
@@ -70,7 +85,7 @@ In a development copy of the host plugin, set `.mcp.json` to:
   "mcpServers": {
     "kinex": {
       "command": "/tmp/kinex-install/node_modules/.bin/kinex-mcp",
-      "args": ["serve", "--directory", "/path/to/workspace"]
+      "args": ["serve", "--permission-mode", "host", "--directory", "/path/to/workspace"]
     }
   }
 }

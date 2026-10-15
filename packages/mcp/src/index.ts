@@ -13,7 +13,7 @@ import type { AskForm, RuntimeOptions } from "./types.ts"
 import { version } from "./version.ts"
 
 export type { KinexComposition } from "./composition.ts"
-export type { AskForm, Form, FormAnswer } from "./types.ts"
+export type { AskForm, Form, FormAnswer, PermissionMode } from "./types.ts"
 export interface KinexMcpOptions extends RuntimeOptions { interaction?: AskForm }
 const empty = z.object({}).strict()
 const discoveryInput = z.object({ tool: z.string().optional(), skill: z.string().optional(), workflow: z.string().optional(),
@@ -29,10 +29,11 @@ export const lifecycleCommands = [
 
 export async function createKinexMcpServer(options: KinexMcpOptions) {
   const directory = path.resolve(options.directory)
+  const permissionMode = z.enum(["kinex", "host"]).parse(options.permissionMode ?? "kinex")
   const lifetime = new AbortController()
   const prose = await readFile(new URL("./instructions.txt", import.meta.url), "utf8")
   const server = new Server({ name: "kinex", version }, { capabilities: { tools: {} }, instructions: prose })
-  const session = new RuntimeSession({ ...options, directory }, mcpInteraction(server, options.interaction))
+  const session = new RuntimeSession({ ...options, directory, permissionMode }, mcpInteraction(server, options.interaction))
   const projection = new ContextProjection()
   let connected = false, disposed: Promise<void> | undefined
   const definitions = [

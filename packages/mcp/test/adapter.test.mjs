@@ -105,7 +105,7 @@ test('contributions retain questions, image bytes and dynamic routing', async t 
   const bytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64')
   await writeFile(image, bytes)
   let enabled = true, cancelled = false
-  const f = await fixture(t, { directory, composition: { contributions: runtime => [coreContribution(runtime), {
+  const f = await fixture(t, { directory, permissionMode: 'host', composition: { contributions: runtime => [coreContribution(runtime), {
     id: 'extra', tools: {
       list: async () => ({ tools: enabled ? [{ name: 'interview', description: 'interview', inputSchema: { type: 'object' } }] : [], problems: [] }),
       call: async (_name, _args, ctx) => {
@@ -289,4 +289,37 @@ test('explicit core-only composition omits setup roots, tools and workflows', as
   assert.ok(!discovered.workflows.some(command => command.name === 'onboarding'))
   assert.ok(!discovered.contextSections.some(key => key.startsWith('setup.')))
   await assert.rejects(stat(path.join(f.directory, '.kinex')), { code: 'ENOENT' })
+})
+
+
+test('host-managed exec runs without duplicate prompts and preserves live explicit rules', async t => {
+  let asks = 0, accepted = false
+  const f = await fixture(t, { permissionMode: 'host' }, async () => {
+    asks++
+    return accepted ? { action: 'accept', content: { allow: true } } : { action: 'decline' }
+  })
+  const marker = path.join(f.directory, 'executed')
+  const exec = () => f.tool('exec', { interpreter: 'python3', python: 'with open("executed", "a") as file: file.write("x")' })
+  const rule = action => writeFile(path.join(f.directory, 'kinex.json'), JSON.stringify({ permission: { python_tool_controller: action } }))
+  for (let i = 0; i < 2; i++) {
+    const result = await exec(); assert.ok(!result.isError, output(result))
+  }
+  assert.equal(asks, 0)
+  assert.equal(await readFile(marker, 'utf8'), 'xx')
+  await rule('deny')
+  assert.match(output(await exec()), /PermissionDeniedError/)
+  assert.equal(asks, 0); assert.equal(await readFile(marker, 'utf8'), 'xx')
+  await rule('ask')
+  assert.match(output(await exec()), /PermissionDeniedError/)
+  assert.equal(asks, 1); assert.equal(await readFile(marker, 'utf8'), 'xx')
+  accepted = true
+  assert.ok(!(await exec()).isError)
+  assert.equal(asks, 2); assert.equal(await readFile(marker, 'utf8'), 'xxx')
+  accepted = false
+  await rule('invalid-rule')
+  assert.match(output(await exec()), /PermissionDeniedError/)
+  assert.equal(asks, 3); assert.equal(await readFile(marker, 'utf8'), 'xxx')
+  await rule('allow')
+  assert.ok(!(await exec()).isError)
+  assert.equal(asks, 3); assert.equal(await readFile(marker, 'utf8'), 'xxxx')
 })

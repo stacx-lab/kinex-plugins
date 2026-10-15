@@ -14,6 +14,17 @@ Shared skills expose onboarding, registration, calibration and robotics guidance
 Agent calls use the same MCP tools as Claude Code and Codex. The runtime remains
 inactive until explicitly started. Start/end/start creates a fresh session.
 
+Pi's tool pipeline owns default approvals, so permission extensions such as
+`pi-automode` can review the full MCP call and approve or block it. Kinex does not
+ask again for `exec`, controller tools or runtime activation. Explicit Kinex
+`ask`/`deny` rules still take precedence over these defaults, and malformed rules
+still ask. Questionnaires remain interactive. Without a permission extension,
+Pi's normal behavior applies: tool calls proceed without default approval prompts.
+
+Launch with `pi --kinex-permission-mode kinex` to opt back into Kinex's default
+approval dialogs. `/kinex-status` reports the effective mode. Restart Pi after
+updating the plugin to launch a new MCP process with the selected mode.
+
 The dialog bridge uses an authenticated private Unix socket, closes on Pi session
 shutdown, cancels dialogs when calls disconnect and declines when UI is unavailable.
 It does not own device state. If a user-configured MCP server named `kinex` overrides

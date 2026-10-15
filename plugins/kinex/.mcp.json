@@ -5,7 +5,9 @@
       "args": [
         "-y",
         "@kinex/mcp@1.0.0",
-        "serve"
+        "serve",
+        "--permission-mode",
+        "host"
       ]
     }
   }

@@ -9,8 +9,11 @@ export interface Form {
 }
 export type FormAnswer = Record<string, string | boolean> | undefined
 export type AskForm = (form: Form, signal: AbortSignal) => Promise<FormAnswer>
+export type PermissionMode = "kinex" | "host"
 export interface RuntimeOptions {
   directory: string
+  /** Host mode delegates default approval to the caller's tool pipeline; explicit rules still apply. */
+  permissionMode?: PermissionMode
   enableRecording?: boolean
   composition?: KinexComposition
   diagnostic?(message: string): void

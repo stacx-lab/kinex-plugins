@@ -13,6 +13,7 @@ export default function kinex(pi: ExtensionAPI) {
   let directory: string | undefined
   let dialogs: Promise<unknown> = Promise.resolve()
   pi.registerFlag("kinex-recording", { description: "Enable model access to Kinex recording after Start Kinex", type: "boolean", default: false })
+  pi.registerFlag("kinex-permission-mode", { description: "Default approvals: host (Pi's tool pipeline) or kinex (Kinex dialogs)", type: "string", default: "host" })
   const dispose = async () => {
     current = undefined; instance = undefined; directory = undefined
     lifetime.abort(new Error("Pi session ended"))
@@ -20,6 +21,8 @@ export default function kinex(pi: ExtensionAPI) {
   }
   pi.on("session_start", async (_event, ctx) => {
     await dispose()
+    const permissionMode = pi.getFlag("kinex-permission-mode") ?? "host"
+    if (permissionMode !== "host" && permissionMode !== "kinex") throw new Error("--kinex-permission-mode must be host or kinex")
     lifetime = new AbortController(); dialogs = Promise.resolve(); current = ctx
     directory = await realpath(ctx.cwd); instance = randomUUID()
     const owner = lifetime
@@ -48,7 +51,7 @@ export default function kinex(pi: ExtensionAPI) {
       dialogs = task.catch(() => {})
       return task
     })
-    pi.registerMcpServer("kinex", { command: "node", args: [fileURLToPath(import.meta.resolve("@kinex/mcp/cli")), "serve", "--directory", directory,
+    pi.registerMcpServer("kinex", { command: "node", args: [fileURLToPath(import.meta.resolve("@kinex/mcp/cli")), "serve", "--directory", directory, "--permission-mode", permissionMode,
       ...(pi.getFlag("kinex-recording") === true ? ["--enable-recording"] : [])], exposure: "direct", timeout: 300,
       description: "Kinex robotics: explicit start/end, devices, Python, onboarding and calibration",
       env: { KINEX_INTERACTION_SOCKET: bridge.socketPath, KINEX_INTERACTION_TOKEN: bridge.token, KINEX_INSTANCE_ID: instance } })

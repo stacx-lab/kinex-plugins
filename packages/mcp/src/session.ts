@@ -16,7 +16,7 @@ export class RuntimeSession {
   constructor(readonly options: RuntimeOptions, private readonly form: AskForm) {}
 
   status() {
-    return { state: this.state, directory: this.options.directory, sessionID: this.bundle?.sessionID,
+    return { state: this.state, directory: this.options.directory, permissionMode: this.options.permissionMode ?? "kinex", sessionID: this.bundle?.sessionID,
       activationFailures: this.bundle?.failures ?? [], ...(this.error ? { error: this.error } : {}) }
   }
   start(signal: AbortSignal, trusted = false): Promise<void> {
@@ -30,7 +30,7 @@ export class RuntimeSession {
       try {
         const adapter = await import("./kinex.ts")
         abort.throwIfAborted()
-        if (!trusted) await adapter.authorizeStart(this.options.directory, this.form, abort)
+        if (!trusted) await adapter.authorizeStart(this.options, this.form, abort)
         abort.throwIfAborted()
         this.bundle = adapter.createRuntime(this.options, this.form)
         await this.bundle.activate(abort)

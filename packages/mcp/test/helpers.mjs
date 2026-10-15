@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, writeFile, readFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { once } from 'node:events'
 import { fileURLToPath } from 'node:url'
@@ -37,6 +37,8 @@ export async function responsesProvider(t) {
 }
 
 export async function codexHost(t, directory, provider, extra = '') {
+  const config = JSON.parse(await readFile(new URL('../../../plugins/kinex/.mcp.json', import.meta.url), 'utf8'))
+  const args = config.mcpServers.kinex.args
   const home = path.join(directory, 'codex-home')
   await mkdir(home)
   await writeFile(path.join(home, 'config.toml'), `model = "gpt-5.4"
@@ -50,7 +52,7 @@ wire_api = "responses"
 requires_openai_auth = false
 [mcp_servers.kinex]
 command = ${JSON.stringify(process.execPath)}
-args = ${JSON.stringify([entry, 'serve', '--directory', directory])}
+args = ${JSON.stringify([entry, ...args.slice(args.indexOf('serve')), '--directory', directory])}
 required = true
 startup_timeout_sec = 30
 tool_timeout_sec = 30

@@ -47,12 +47,15 @@ Pi loads the package directly from the checkout, including its shared skills.
 
 ### Claude Code and Codex
 
-The generated marketplace bundles default to `npx -y @kinex/mcp@1.0.0 serve`,
-which requires npm publication. Create a local marketplace copy and point both
-MCP configuration files at the built server instead. Run this from the checkout,
-in the same shell as the build commands:
+The generated marketplace bundles launch the version-pinned `@kinex/mcp` package
+through `npx`, which requires npm publication. For a local installation, create a
+marketplace copy and point both MCP configuration files at the built server.
+After building, run this from the checkout. Export both paths in this shell so
+Node can read them:
 
 ```sh
+nvm use
+export KINEX_SOURCE="$PWD"
 export KINEX_LOCAL="$HOME/.local/share/kinex-plugins-marketplace"
 mkdir -p "$KINEX_LOCAL"
 cp -R .agents .claude-plugin plugins "$KINEX_LOCAL/"
@@ -67,7 +70,7 @@ const config = {
       command: process.execPath,
       args: [
         path.join(process.env.KINEX_SOURCE, "packages/mcp/bin/kinex-mcp.mjs"),
-        "serve"
+        "serve", "--permission-mode", "host"
       ]
     }
   }
@@ -96,6 +99,10 @@ codex plugin marketplace add "$KINEX_LOCAL"
 codex plugin add kinex@kinex-plugins
 ```
 
+For an installation using packed tarballs instead of a source checkout, see
+[the server README](packages/mcp/README.md#local-tarballs-before-publication).
+No package is published by a local build, test or pack operation.
+
 ### Start a session
 
 Open your robot workspace and launch a new host session:
@@ -106,14 +113,39 @@ export KINEX_WORKSPACE="$PWD"
 # Launch pi, claude, or codex.
 ```
 
-Ask to “Start Kinex,” then approve
-activation if prompted. `/kinex-start`, `/kinex-end` and `/kinex-status` are direct,
-model-free Pi commands. Claude/Codex skills invoke the shared MCP tools; their
-names may be qualified by the plugin name in the host UI.
+Connecting the plugin leaves robotics inactive. Use these lifecycle commands or
+skills inside your host session:
 
-For an installation using packed tarballs instead of a source checkout, see
-[the server README](packages/mcp/README.md#local-tarballs-before-publication).
-No package is published by a local build, test or pack operation.
+| Command / skill | When to use it | What it does |
+| --- | --- | --- |
+| `kinex-start` | Begin robotics work. | Start the runtime and restore configured loaded devices. Approve activation if prompted. Starting an already active runtime keeps the current session. |
+| `kinex-status` | Check before or during robotics work. | Report runtime state, workspace, permission mode, recording status and failures without activating robotics. |
+| `kinex-end` | Finish robotics work while keeping the coding session open. | Cancel active work, finalize recordings and release devices and owned processes. |
+
+**Pi:** enter the direct, model-free commands in the prompt:
+
+```text
+/kinex-start
+/kinex-status
+/kinex-end
+```
+
+**Claude Code:** invoke the installed `kinex-start`, `kinex-status` or
+`kinex-end` skill using the name shown in the host UI, which may include the
+plugin namespace. You can also ask “Start Kinex,” “Show Kinex status,” or
+“End Kinex.”
+
+**Codex:** explicitly ask **“Start Kinex”** in the conversation to activate the
+runtime. Installing or enabling the plugin, or opening Codex, does not start
+robotics. Use “Show Kinex status” to inspect it and “End Kinex” to shut it down
+while keeping Codex open. The corresponding `kinex-start`, `kinex-status` and
+`kinex-end` skills guide these requests through the shared MCP tools. Claude Code
+and Codex apply their host approval policies to these tool calls.
+
+A typical session is `kinex-start` → `kinex-status` → robotics work → `kinex-end`.
+After ending, `kinex-status` reports inactive; use `kinex-start` again to create a
+fresh runtime. Exiting the host normally also shuts down its Kinex runtime and
+finalizes recordings. External services Kinex only connected to remain running.
 
 Workspace selection is `--directory`, then `KINEX_WORKSPACE`, then the process
 working directory. Set `KINEX_WORKSPACE` explicitly if a host launches MCP from a
@@ -136,7 +168,7 @@ export KINEX_SOURCE="$PWD"
 Pi loads the rebuilt package on its next start. For Claude/Codex, recreate the
 local marketplace copy using the steps above and refresh or reinstall the plugin
 in the host to pick up changed skills and manifests. Start a new host session
-after updating.
+after updating, then use `kinex-status` to verify that `permissionMode` is `host`.
 
 ## Architecture and ownership
 
@@ -163,12 +195,29 @@ Pi extension + shared skills        Claude/Codex manifests + shared skills
 - `assets/skills` is the canonical skill source. `release.json` and the root version
   generate manifests, marketplace entries and copied skills with `npm run generate`.
 
-Host tool approval and Kinex action approval are separate checks. A client without
-MCP elicitation must supply a UI bridge, configure an explicit Kinex permission,
-or decline the action. Missing UI never silently grants permission. Direct
-`kinex-mcp control` commands are trusted user entrypoints and must not be called by
-model instructions to bypass approval. IPC is local to the OS user, not a sandbox
-against other processes running as that user.
+## Permissions
+
+Pi, Claude Code and Codex plugins use **host-managed permissions** by default.
+Each host's tool permission policy controls approval before Kinex executes a call.
+Kinex does not repeat default approval prompts for `exec`, controller tools or
+activation. Pi also uses its permission extensions, including auto mode. Without
+a host permission gate, calls proceed unless an explicit Kinex rule blocks them.
+
+Explicit `allow`, `ask` and `deny` entries in `kinex.json` still apply; malformed
+entries remain `ask`, and emergency stop retains its always-allowed Kinex policy.
+Setup questionnaires still require answers. Explicit `ask` rules and questionnaires
+use MCP elicitation or Pi's UI bridge and decline if interaction is unavailable.
+
+To restore Kinex's default approval dialogs, launch Pi with
+`pi --kinex-permission-mode kinex`, or replace `--permission-mode host` with
+`--permission-mode kinex` in your local Claude/Codex MCP configuration. Restart
+the host after changing the mode. `kinex-status` reports the effective
+`permissionMode`. Standalone server launches default to Kinex-managed permissions.
+The mode is a startup policy; model tool arguments cannot change it.
+
+Direct `kinex-mcp control` commands are trusted user entrypoints and must not be
+called by model instructions to bypass approval. IPC is local to the OS user,
+not a sandbox against other processes running as that user.
 
 ## Develop and verify
 

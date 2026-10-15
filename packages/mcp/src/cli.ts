@@ -16,17 +16,19 @@ const commandResult = z.discriminatedUnion("kind", [
 export async function main(args = process.argv.slice(2)) {
   const { values, positionals } = parseArgs({ args, allowPositionals: true, options: {
     directory: { type: "string" }, instance: { type: "string" },
+    "permission-mode": { type: "string" },
     "enable-recording": { type: "boolean" }, help: { type: "boolean", short: "h" }, version: { type: "boolean" },
   } })
   if (values.version) { console.log(version); return }
   if (values.help || !positionals.length) {
-    console.log("kinex-mcp serve [--directory PATH] [--enable-recording]\nkinex-mcp control --directory PATH [--instance ID] <command> [arguments]\nkinex-mcp control --directory PATH [--instance ID] --help\n\nControl commands execute on the existing Kinex server, without a model.\nUse 'control ... commands' to list Core commands, or 'control ... instances' to select a server.")
+    console.log("kinex-mcp serve [--directory PATH] [--enable-recording] [--permission-mode kinex|host]\nkinex-mcp control --directory PATH [--instance ID] <command> [arguments]\nkinex-mcp control --directory PATH [--instance ID] --help\n\nPermission mode defaults to kinex; host delegates default approvals to the host tool pipeline.\nControl commands execute on the existing Kinex server, without a model.\nUse 'control ... commands' to list Core commands, or 'control ... instances' to select a server.")
     return
   }
   const [mode, command, ...rest] = positionals
   const directory = await realpath(values.directory ?? process.env.KINEX_WORKSPACE ?? process.cwd())
   if (mode === "control") {
     if (values["enable-recording"]) throw new Error("--enable-recording is a serve option")
+    if (values["permission-mode"] !== undefined) throw new Error("--permission-mode is a serve option")
     if (!command) throw new Error("control requires a command; use commands or instances")
     const found = await endpoints(directory)
     if (command === "instances") { console.log(JSON.stringify(found, null, 2)); return }
@@ -54,7 +56,8 @@ export async function main(args = process.argv.slice(2)) {
     return
   }
   if (mode !== "serve" || command || values.instance) throw new Error("Usage: kinex-mcp serve [--directory PATH] [--enable-recording]")
-  const adapter = await createKinexMcpServer({ directory, enableRecording: values["enable-recording"], diagnostic: message => console.error(message), interaction: process.env.KINEX_INTERACTION_SOCKET && process.env.KINEX_INTERACTION_TOKEN ? remoteForm(process.env.KINEX_INTERACTION_SOCKET, process.env.KINEX_INTERACTION_TOKEN) : undefined })
+  const permissionMode = z.enum(["kinex", "host"]).parse(values["permission-mode"] ?? "kinex")
+  const adapter = await createKinexMcpServer({ directory, permissionMode, enableRecording: values["enable-recording"], diagnostic: message => console.error(message), interaction: process.env.KINEX_INTERACTION_SOCKET && process.env.KINEX_INTERACTION_TOKEN ? remoteForm(process.env.KINEX_INTERACTION_SOCKET, process.env.KINEX_INTERACTION_TOKEN) : undefined })
   let shutdown!: () => void
   const stopped = new Promise<void>(resolve => { shutdown = resolve })
   process.once("SIGINT", shutdown)

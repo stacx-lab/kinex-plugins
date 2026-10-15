@@ -18,9 +18,13 @@ test('real Claude plugin loads skills and MCP, starts explicitly, ends/restarts,
   const directory = await workspace(t), plugin = path.join(directory, 'plugin')
   await cp(path.join(root, 'plugins/kinex'), plugin, { recursive: true })
   // Test the release plugin with the local unpublished server instead of contacting npm.
-  await writeFile(path.join(plugin, '.mcp.json'), JSON.stringify({ mcpServers: { kinex: { command: process.execPath, args: [entry, 'serve', '--directory', directory] } } }))
+  const configFile = path.join(plugin, '.mcp.json')
+  const mcpConfig = JSON.parse(await readFile(configFile, 'utf8'))
+  const server = mcpConfig.mcpServers.kinex
+  server.command = process.execPath
+  server.args = [entry, ...server.args.slice(server.args.indexOf('serve')), '--directory', directory]
+  await writeFile(configFile, JSON.stringify(mcpConfig))
   const runtime = createKinexRuntime({ directory }); await seed(runtime); await runtime.dispose()
-  await writeFile(path.join(directory, 'kinex.json'), JSON.stringify({ permission: { runtime_start: 'allow', device_act: 'allow', device_read: 'allow' } }))
   const steps = [ ['kinex_status', {}], ['kinex_start', {}], ['kinex_call', { name: 'device', arguments: { deviceID: 'sensor', action: 'load' } }],
     ['kinex_tools', {}], ['kinex_shutdown', {}], ['kinex_status', {}], ['kinex_start', {}] ]
   const requests = [], failures = []
@@ -71,6 +75,8 @@ test('real Claude plugin loads skills and MCP, starts explicitly, ends/restarts,
   assert.equal(steps.length, 0)
   assert.match(JSON.stringify(requests[0]), /kinex-start/)
   const outputs = JSON.stringify(requests.at(-1).messages)
+  assert.match(outputs, /permissionMode.*host/)
+  assert.doesNotMatch(outputs, /PermissionDeniedError/)
   assert.match(outputs, /inactive/); assert.match(outputs, /active/); assert.match(outputs, /setup_plan/)
   assert.equal((await endpoints(directory)).length, 0)
   const manifest = JSON.parse(await readFile(path.join(directory, '.kinex/recordings', recordingID, 'recording.json'), 'utf8'))

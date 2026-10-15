@@ -91,3 +91,21 @@ test('failed composition cleans up; failed disposal prevents restart', async t =
   // Disposal still closes the transport; the deliberate error is asserted here.
   await assert.rejects(g.server.dispose(), /cleanup failed/)
 })
+
+
+test('host mode delegates default start approval but retains explicit rules and rejects model mode changes', async t => {
+  const f = await connect(t, { permissionMode: 'host' })
+  assert.equal((await f.call('kinex_status')).structuredContent.permissionMode, 'host')
+  assert.equal((await f.call('kinex_start')).structuredContent.state, 'active')
+  await f.call('kinex_shutdown')
+  for (const rule of ['deny', 'ask', 'malformed']) {
+    await writeFile(path.join(f.directory, 'kinex.json'), JSON.stringify({ permission: { runtime_start: rule } }))
+    assert.equal((await f.call('kinex_start')).isError, true)
+    assert.equal(f.server.runtime, undefined)
+  }
+  const g = await connect(t)
+  assert.equal((await g.call('kinex_status')).structuredContent.permissionMode, 'kinex')
+  assert.equal((await g.call('kinex_start', { permissionMode: 'host' })).isError, true)
+  assert.equal((await g.call('kinex_start')).isError, true)
+  await assert.rejects(createKinexMcpServer({ directory: f.directory, permissionMode: 'invalid' }))
+})
