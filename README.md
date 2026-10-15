@@ -17,42 +17,126 @@ Requires local Linux or macOS, Node >=22.22.2, and the device-specific dependenc
 required by Kinex. Tested host versions are pinned in `release.json`: Pi 1.2.0,
 Claude Code 2.1.299 and Codex 0.162.1. Windows and OpenCode are outside this release.
 
-After publishing the npm packages, install Pi with:
+Install from a local checkout; Kinex packages do not need to be published to npm.
+Install your preferred host separately, then build the plugins:
 
 ```sh
-pi install npm:@kinex/pi@1.0.0
+git clone https://github.com/stacx-lab/kinex-plugins.git
+cd kinex-plugins
+nvm use
+npm ci
+npm run build
+export KINEX_SOURCE="$PWD"
 ```
 
-For Claude Code, add this repository as a plugin marketplace, then install:
+If you already have the checkout, start with `cd /path/to/kinex-plugins`.
+`nvm use` selects the version in `.nvmrc`; without nvm, use a compatible Node
+installation. `npm ci` installs third-party dependencies and the checked-in
+core/setup snapshots. Keep this checkout and its dependencies in place: the
+installed plugins use the built files here.
+
+### Pi
+
+Install the local Pi package:
 
 ```sh
-claude plugin marketplace add /absolute/path/to/kinex-plugins
+pi install "$KINEX_SOURCE/packages/pi"
+```
+
+Pi loads the package directly from the checkout, including its shared skills.
+
+### Claude Code and Codex
+
+The generated marketplace bundles default to `npx -y @kinex/mcp@1.0.0 serve`,
+which requires npm publication. Create a local marketplace copy and point both
+MCP configuration files at the built server instead. Run this from the checkout,
+in the same shell as the build commands:
+
+```sh
+export KINEX_LOCAL="$HOME/.local/share/kinex-plugins-marketplace"
+mkdir -p "$KINEX_LOCAL"
+cp -R .agents .claude-plugin plugins "$KINEX_LOCAL/"
+
+node --input-type=module <<'JS'
+import { writeFileSync } from "node:fs";
+import path from "node:path";
+
+const config = {
+  mcpServers: {
+    kinex: {
+      command: process.execPath,
+      args: [
+        path.join(process.env.KINEX_SOURCE, "packages/mcp/bin/kinex-mcp.mjs"),
+        "serve"
+      ]
+    }
+  }
+};
+
+for (const file of [".mcp.json", "mcp.json"]) {
+  writeFileSync(
+    path.join(process.env.KINEX_LOCAL, "plugins/kinex", file),
+    JSON.stringify(config, null, 2) + "\n"
+  );
+}
+JS
+```
+
+This keeps machine-specific paths outside the repository. The copy uses the
+current Node executable and checkout by absolute path; recreate it if either
+moves. Install into your preferred host:
+
+```sh
+# Claude Code
+claude plugin marketplace add "$KINEX_LOCAL"
 claude plugin install kinex@kinex-plugins
-```
 
-For Codex:
-
-```sh
-codex plugin marketplace add /absolute/path/to/kinex-plugins
+# Codex
+codex plugin marketplace add "$KINEX_LOCAL"
 codex plugin add kinex@kinex-plugins
 ```
 
-Start a new host session in the robot workspace. Ask to “Start Kinex,” then approve
+### Start a session
+
+Open your robot workspace and launch a new host session:
+
+```sh
+cd /path/to/robot-workspace
+export KINEX_WORKSPACE="$PWD"
+# Launch pi, claude, or codex.
+```
+
+Ask to “Start Kinex,” then approve
 activation if prompted. `/kinex-start`, `/kinex-end` and `/kinex-status` are direct,
 model-free Pi commands. Claude/Codex skills invoke the shared MCP tools; their
 names may be qualified by the plugin name in the host UI.
 
-The generated Claude/Codex manifests launch `npx -y @kinex/mcp@1.0.0 serve`.
-They require registry publication before release installation works. For local
-unpublished development, pack/install the tarballs and point a **copy** of
-`plugins/kinex/.mcp.json` at the installed `kinex-mcp` executable; see
-[the server README](packages/mcp/README.md). No package is published by a local
-build, test or pack operation.
+For an installation using packed tarballs instead of a source checkout, see
+[the server README](packages/mcp/README.md#local-tarballs-before-publication).
+No package is published by a local build, test or pack operation.
 
 Workspace selection is `--directory`, then `KINEX_WORKSPACE`, then the process
 working directory. Set `KINEX_WORKSPACE` explicitly if a host launches MCP from a
 different directory. Each host process owns its own runtime. Independent hosts
 are not coordinated to operate the same physical devices concurrently.
+
+### Update a local installation
+
+End Kinex and close the host before updating the checkout:
+
+```sh
+cd /path/to/kinex-plugins
+git pull --ff-only
+nvm use
+npm ci
+npm run build
+export KINEX_SOURCE="$PWD"
+```
+
+Pi loads the rebuilt package on its next start. For Claude/Codex, recreate the
+local marketplace copy using the steps above and refresh or reinstall the plugin
+in the host to pick up changed skills and manifests. Start a new host session
+after updating.
 
 ## Architecture and ownership
 
@@ -143,9 +227,10 @@ updates. No sibling Kinex source files are edited.
 `@kinex/mcp` and `@kinex/pi` tarballs, a Claude/Codex plugin bundle with both
 marketplace indexes, and `SHA256SUMS`. It verifies generated artifacts are current.
 Plugin/root versions identify the release; core/setup have their own matching
-versions. Publish core/setup before MCP, and MCP before Pi and the marketplace
-release. Released npm versions must be immutable; bump package versions when
-changing a previously published snapshot.
+versions. Local installation and tarball distribution work without npm
+publication. If npm distribution is introduced later, publish core/setup before
+MCP, and MCP before Pi and the marketplace release. Released npm versions must
+be immutable; bump package versions when changing a previously published snapshot.
 
 CI tests and packs on Linux. A matching `v*` tag attaches artifacts to a GitHub
 release; it does not publish npm packages. macOS remains a release verification
