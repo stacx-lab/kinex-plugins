@@ -243,33 +243,6 @@ first activation (87 MiB RSS), and 2 ms for shutdown. These are local measuremen
 not performance guarantees; they exclude host startup, npm download and devices.
 Ending Kinex releases resources but does not unload cached JavaScript modules.
 
-## Update Kinex once
-
-```sh
-npm run kinex:sync -- ../kinex
-```
-
-The source Kinex checkout must have its dependencies installed. Synchronization:
-
-1. Copies this checkout into temporary staging and records its current catalog.
-2. Builds and packs core/setup from the supplied checkout; records source revision,
-   dirty state and SHA-256 in `vendor/core.json` and `vendor/setup.json`.
-3. Updates exact dependencies, lockfile and generated artifacts in staging.
-4. Checks snapshot integrity, builds, runs shared/host/relocation tests and validates
-   release metadata. A failure leaves the working checkout unchanged.
-5. Produces `compatibility-report.json` with added, removed and changed tools,
-   schemas, skills and workflows, plus the validated host versions.
-6. Applies the validated files, refusing concurrent edits, and installs/builds the
-   result. Failed installation restores the prior files and attempts to restore
-   the prior dependency installation.
-
-Review the report and snapshot diff together. Ordinary additions should require
-only the sync; breaking public API changes are fixed at the shared adapter boundary.
-Host SDK changes are separate, deliberate upgrades in `package.json` and
-`release.json`. Builds never refresh Kinex implicitly. `core:refresh` is the
-low-level, in-place snapshot command for maintainers; use `kinex:sync` for normal
-updates. No sibling Kinex source files are edited.
-
 ## Release
 
 `npm run pack -- OUTPUT_DIRECTORY` produces core/setup snapshots and provenance,
