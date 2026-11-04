@@ -1,7 +1,7 @@
 import type { Context } from "@kinex/core"
 import type { AskForm, RuntimeBundle, RuntimeOptions } from "./types.ts"
 
-export type RuntimeState = "inactive" | "starting" | "active" | "stopping" | "failed"
+export type RuntimeState = "inactive" | "starting" | "active" | "stopping"
 export class RuntimeSession {
   state: RuntimeState = "inactive"
   bundle?: RuntimeBundle
@@ -27,19 +27,24 @@ export class RuntimeSession {
     this.state = "starting"; this.error = undefined; this.lifetime = new AbortController()
     const abort = AbortSignal.any([signal, this.lifetime.signal])
     const task = (async () => {
+      let bundle: RuntimeBundle | undefined
       try {
         const adapter = await import("./kinex.ts")
         abort.throwIfAborted()
         if (!trusted) await adapter.authorizeStart(this.options, this.form, abort)
         abort.throwIfAborted()
-        this.bundle = adapter.createRuntime(this.options, this.form)
-        await this.bundle.activate(abort)
+        bundle = this.bundle = adapter.createRuntime(this.options, this.form)
+        await bundle.activate(abort)
         abort.throwIfAborted()
         this.state = "active"
       } catch (error) {
         this.error = String(error)
-        try { await this.bundle?.dispose(); this.bundle = undefined }
-        catch (cleanup) { this.state = "failed"; this.error = `${String(error)}; cleanup: ${String(cleanup)}`; throw cleanup }
+        if (bundle) {
+          // Disposal is memoized, so a concurrent shutdown observes the same cleanup result.
+          try { await bundle.dispose() }
+          catch (cleanup) { this.error = `${String(error)}; cleanup: ${String(cleanup)}` }
+          finally { if (this.bundle === bundle) this.bundle = undefined }
+        }
         if (this.state !== "stopping") this.state = "inactive"
         throw error
       }
@@ -81,19 +86,19 @@ export class RuntimeSession {
   }
   shutdown(): Promise<void> {
     if (this.stopping) return this.stopping
-    if (this.state === "failed") return Promise.reject(new Error(this.error ?? "Kinex cleanup failed"))
     if (this.state === "inactive") return Promise.resolve()
     this.state = "stopping"
     this.lifetime.abort(new Error("Kinex runtime ended")); this.interrupt()
+    const bundle = this.bundle
     const task = (async () => {
-      const results = await Promise.allSettled([this.bundle?.dispose(), this.starting?.catch(() => {}), ...this.pending])
-      const cleanup = results[0]
-      if (cleanup?.status === "rejected" || this.state === "failed") {
-        this.state = "failed"
-        this.error = cleanup?.status === "rejected" ? String(cleanup.reason) : this.error
-        throw new Error(this.error)
+      const [cleanup] = await Promise.allSettled([bundle?.dispose(), this.starting?.catch(() => {}), ...this.pending])
+      if (this.bundle === bundle) this.bundle = undefined
+      this.state = "inactive"; this.queue = Promise.resolve()
+      // Core terminates its hosts and owned processes even when disposal reports a failure, so restart stays safe.
+      if (cleanup?.status === "rejected") {
+        this.error = `Kinex cleanup failed: ${String(cleanup.reason)}`
+        throw new Error(this.error, { cause: cleanup.reason })
       }
-      this.bundle = undefined; this.state = "inactive"; this.queue = Promise.resolve()
     })()
     this.stopping = task
     void task.finally(() => { this.stopping = undefined }).catch(() => {})

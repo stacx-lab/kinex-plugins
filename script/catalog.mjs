@@ -14,6 +14,7 @@ try {
     const catalog = await capabilities.tools.list()
     if (catalog.problems.length) throw new Error(catalog.problems.join('\n'))
     console.log(JSON.stringify({ tools: catalog.tools, skills: (await capabilities.skills.list()).map(({ name, description }) => ({ name, description })),
-      workflows: capabilities.commands.filter(command => command.kind === 'workflow').map(({ name, description, arguments: args }) => ({ name, description, arguments: args })) }))
+      workflows: capabilities.commands.filter(command => command.kind === 'workflow').map(({ name, description, arguments: args }) => ({ name, description, arguments: args })),
+      contextSections: Object.keys((await capabilities.context()).sections).sort().map(name => ({ name })) }))
   } finally { await runtime.dispose() }
 } finally { await rm(directory, { recursive: true, force: true }) }

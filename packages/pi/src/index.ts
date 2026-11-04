@@ -51,7 +51,7 @@ export default function kinex(pi: ExtensionAPI) {
       dialogs = task.catch(() => {})
       return task
     })
-    pi.registerMcpServer("kinex", { command: "node", args: [fileURLToPath(import.meta.resolve("@kinex/mcp/cli")), "serve", "--directory", directory, "--permission-mode", permissionMode,
+    pi.registerMcpServer("kinex", { command: process.execPath, args: [fileURLToPath(import.meta.resolve("@kinex/mcp/cli")), "serve", "--directory", directory, "--permission-mode", permissionMode,
       ...(pi.getFlag("kinex-recording") === true ? ["--enable-recording"] : [])], exposure: "direct", timeout: 300,
       description: "Kinex robotics: explicit start/end, devices, Python, onboarding and calibration",
       env: { KINEX_INTERACTION_SOCKET: bridge.socketPath, KINEX_INTERACTION_TOKEN: bridge.token, KINEX_INSTANCE_ID: instance } })

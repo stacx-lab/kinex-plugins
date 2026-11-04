@@ -3,13 +3,14 @@ import { cp, mkdtemp, readFile, writeFile, mkdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { parseArgs } from 'node:util'
 import { generatedArtifactPaths } from './generate.mjs'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
 const read = file => readFile(file).catch(error => { if (error.code === 'ENOENT') return undefined; throw error })
 export function compareCatalogs(before, after) {
-  return Object.fromEntries(['tools', 'skills', 'workflows'].map(kind => {
-    const old = new Map(before[kind].map(item => [item.name, item])), next = new Map(after[kind].map(item => [item.name, item]))
+  return Object.fromEntries(['tools', 'skills', 'workflows', 'contextSections'].map(kind => {
+    const old = new Map((before[kind] ?? []).map(item => [item.name, item])), next = new Map((after[kind] ?? []).map(item => [item.name, item]))
     return [kind, { added: [...next.keys()].filter(name => !old.has(name)), removed: [...old.keys()].filter(name => !next.has(name)),
       changed: [...next.keys()].filter(name => old.has(name) && JSON.stringify(old.get(name)) !== JSON.stringify(next.get(name))) }]
   }))
@@ -40,20 +41,21 @@ export async function applyCandidate(destination, candidate, paths, originals, i
   }
 }
 
-export async function synchronize(source, destination = root) {
+export async function synchronize(source, destination = root, { ref = 'HEAD', baseline: baselineFile } = {}) {
   const stage = await mkdtemp(path.join(tmpdir(), 'kinex-sync-'))
   const run = (command, args, cwd, capture = false) => execFileSync(command, args, { cwd,
     env: { ...process.env, KINEX_SYNC_VALIDATION: '1' }, encoding: 'utf8', stdio: capture ? ['ignore', 'pipe', 'inherit'] : 'inherit' })
   try {
     const excluded = new Set(['.git', 'node_modules', 'dist'])
     await cp(destination, stage, { recursive: true, filter: file => !path.relative(destination, file).split(path.sep).some(part => excluded.has(part)) })
-    const baseline = JSON.parse(run(process.execPath, ['script/catalog.mjs'], destination, true))
+    // A saved catalog lets a migration compare against snapshots no longer installed here.
+    const baseline = JSON.parse(baselineFile ? await readFile(baselineFile, 'utf8') : run(process.execPath, ['script/catalog.mjs'], destination, true))
     const candidates = ['package.json', 'package-lock.json', 'packages/mcp/package.json', 'compatibility-report.json',
       'vendor/core.json', 'vendor/setup.json', ...await generatedArtifactPaths(destination)]
     const oldSnapshots = await Promise.all(['core', 'setup'].map(async name => JSON.parse(await readFile(path.join(destination, 'vendor', `${name}.json`), 'utf8'))))
     candidates.push(...oldSnapshots.map(snapshot => `vendor/${snapshot.file}`))
     const originals = new Map(await Promise.all(candidates.map(async relative => [relative, await read(path.join(destination, relative))])))
-    run(process.execPath, ['script/refresh-core.mjs', path.resolve(source)], stage)
+    run(process.execPath, ['script/refresh-core.mjs', path.resolve(source), '--ref', ref], stage)
     run('npm', ['run', 'core:check'], stage)
     run('npm', ['run', 'typecheck'], stage)
     run('npm', ['test'], stage)
@@ -83,6 +85,7 @@ export async function synchronize(source, destination = root) {
   } finally { await rm(stage, { recursive: true, force: true }) }
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  if (!process.argv[2]) throw new Error('Usage: npm run kinex:sync -- PATH_TO_KINEX')
-  await synchronize(process.argv[2])
+  const { values, positionals } = parseArgs({ allowPositionals: true, options: { ref: { type: 'string', default: 'HEAD' }, baseline: { type: 'string' } } })
+  if (positionals.length !== 1) throw new Error('Usage: npm run kinex:sync -- PATH_TO_KINEX [--ref REF] [--baseline CATALOG.json]')
+  await synchronize(positionals[0], root, { ref: values.ref, baseline: values.baseline && path.resolve(values.baseline) })
 }

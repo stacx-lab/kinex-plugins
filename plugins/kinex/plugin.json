@@ -1,6 +1,6 @@
 {
   "name": "kinex",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Robotics tools, onboarding and calibration with an explicitly started Kinex runtime",
   "author": {
     "name": "Stacx Lab"

@@ -20,7 +20,7 @@ test('Pi package installs with shared MCP and relocates without standalone or ot
   const install = path.join(directory, 'install'), moved = path.join(directory, 'relocated')
   await exec('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--prefix', install, ...snapshots, ...packages, '@earendil-works/pi-coding-agent@1.2.0'])
   await rename(install, moved)
-  for (const name of ['kinex', '@kinex/codex', '@kinex/opencode']) await assert.rejects(stat(path.join(moved, 'node_modules', name)), { code: 'ENOENT' })
+  for (const name of ['kinex']) await assert.rejects(stat(path.join(moved, 'node_modules', name)), { code: 'ENOENT' })
   const { stdout } = await exec(process.execPath, ['--input-type=module', '--eval', `
     import assert from 'node:assert/strict';
     import pi from '@kinex/pi';

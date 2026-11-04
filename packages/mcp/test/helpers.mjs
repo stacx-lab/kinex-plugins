@@ -53,6 +53,7 @@ requires_openai_auth = false
 [mcp_servers.kinex]
 command = ${JSON.stringify(process.execPath)}
 args = ${JSON.stringify([entry, ...args.slice(args.indexOf('serve')), '--directory', directory])}
+env = { KINEX_CONFIG_DIR = ${JSON.stringify(process.env.KINEX_CONFIG_DIR)}, KINEX_DATA_DIR = ${JSON.stringify(process.env.KINEX_DATA_DIR)} }
 required = true
 startup_timeout_sec = 30
 tool_timeout_sec = 30

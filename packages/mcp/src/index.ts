@@ -10,7 +10,7 @@ import { modelResult } from "./result.ts"
 import { RuntimeSession } from "./session.ts"
 import { ContextProjection, modelInstructions } from "./context.ts"
 import type { AskForm, RuntimeOptions } from "./types.ts"
-import { version } from "./version.ts"
+import { kinexVersions, version } from "./version.ts"
 
 export type { KinexComposition } from "./composition.ts"
 export type { AskForm, Form, FormAnswer, PermissionMode } from "./types.ts"
@@ -38,15 +38,15 @@ export async function createKinexMcpServer(options: KinexMcpOptions) {
   let connected = false, disposed: Promise<void> | undefined
   const definitions = [
     { name: "kinex_start", description: "Start Kinex only when the user requests activation. Restore configured loaded devices; approval may be required.", schema: empty },
-    { name: "kinex_status", description: "Inspect Kinex lifecycle and recording status without activating robotics.", schema: empty, annotations: { readOnlyHint: true } },
+    { name: "kinex_status", description: "Inspect Kinex lifecycle, versions and recording status without activating robotics.", schema: empty, annotations: { readOnlyHint: true } },
     { name: "kinex_shutdown", description: "End Kinex robotics, cancel work, finalize recordings and release devices. The coding session stays open.", schema: empty },
-    { name: "kinex_tools", description: "Discover active Kinex tools and skills. Summaries by default; use tool for a schema, skill or workflow for guidance, context=full or section names for live context. Refresh after resume/compaction.", schema: discoveryInput, annotations: { readOnlyHint: true } },
+    { name: "kinex_tools", description: "Discover active Kinex tools and skills. Summaries by default; use tool for a schema, skill or workflow for guidance, context=full for robotics instructions and context sections. Refresh after resume/compaction.", schema: discoveryInput, annotations: { readOnlyHint: true } },
     { name: "kinex_call", description: "Call a Kinex tool with its current schema from kinex_tools. Core permissions apply. Denial/cancellation means wait for user direction.", schema: callInput },
-    { name: "kinex_stop", description: "Immediately cancel robotics work and stop loaded actuators. Keeps Kinex active. Bypasses the Kinex queue and Kinex approval.", schema: stopInput },
+    { name: "kinex_stop", description: "Immediately cancel Kinex work, stop the named device or every loaded device through its declared stop, and cancel scripts that commanded a stopped device. Keeps Kinex active. Bypasses the Kinex queue and Kinex approval.", schema: stopInput },
   ]
   const status = async () => {
     const state = session.status(), bundle = session.state === "active" ? session.bundle : undefined
-    return { ...state, versions: { mcp: version }, ...(bundle ? { recording: await bundle.runtime.recording.status() } : {}) }
+    return { ...state, versions: await kinexVersions(), ...(bundle ? { recording: await bundle.runtime.recording.status() } : {}) }
   }
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: definitions.map(({ schema, ...definition }) => ({
     ...definition, inputSchema: z.toJSONSchema(schema, { io: "input" }),

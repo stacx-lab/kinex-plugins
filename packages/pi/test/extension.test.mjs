@@ -3,11 +3,12 @@ import assert from 'node:assert/strict'
 import path from 'node:path'
 import { stat, readFile, writeFile } from 'node:fs/promises'
 import { setTimeout as delay } from 'node:timers/promises'
-import { isolate, fakeProvider, workspace } from '../../../test/helpers.mjs'
+import { isolate, fakeProvider, workspace, kinexPython } from '../../../test/helpers.mjs'
 const isolation = await isolate(); after(isolation.cleanup)
 const { createAgentSession, createMcpExtension, DefaultResourceLoader, SessionManager } = await import('@earendil-works/pi-coding-agent')
 const { default: kinex } = await import('../dist/index.js')
 const { endpoints, requestCommand } = await import('@kinex/mcp/control')
+const { createKinexRuntime } = await import('@kinex/core')
 
 async function piSession(t, permissionMode) {
   const cwd = await workspace(t), fake = await fakeProvider(t, isolation.root)
@@ -68,7 +69,7 @@ test('real Pi starts inactive with host permissions and retains explicit Kinex d
 test('Pi permission hooks see complete exec input and can approve or block without a second Kinex prompt', { timeout: 45000 }, async t => {
   const f = await piSession(t)
   await f.call('mcp__kinex__kinex_start')
-  const input = { name: 'exec', arguments: { interpreter: 'python3', python: 'with open("executed", "a") as file: file.write("x")' } }
+  const input = { name: 'exec', arguments: { python: 'with open("executed", "a") as file: file.write("x")' } }
   const exec = () => f.call('mcp__kinex__kinex_call', input)
   const marker = path.join(f.cwd, 'executed')
   f.gate.allow = false
@@ -76,6 +77,7 @@ test('Pi permission hooks see complete exec input and can approve or block witho
   await assert.rejects(stat(marker), { code: 'ENOENT' })
   await assert.rejects(stat(path.join(f.cwd, '.kinex/python')), { code: 'ENOENT' })
   assert.deepEqual(f.gate.calls[0], input)
+  const runtime = createKinexRuntime({ directory: f.cwd }); await kinexPython(runtime); await runtime.dispose()
   f.gate.allow = true
   await exec(); await exec()
   assert.equal(await readFile(marker, 'utf8'), 'xx')
@@ -87,7 +89,7 @@ test('Pi permission hooks see complete exec input and can approve or block witho
   await exec()
   assert.equal(await readFile(marker, 'utf8'), 'xxx')
   assert.equal(f.ui.questions, 0)
-  await writeFile(path.join(f.cwd, 'kinex.json'), JSON.stringify({ permission: { python_tool_controller: 'deny' } }))
+  await writeFile(path.join(f.cwd, 'kinex.json'), JSON.stringify({ permission: { python_tool: 'deny' } }))
   await exec()
   assert.equal(await readFile(marker, 'utf8'), 'xxx')
   assert.equal(f.ui.questions, 0)
@@ -100,7 +102,7 @@ test('Pi can opt back into Kinex-managed permissions', { timeout: 45000 }, async
   await f.call('mcp__kinex__kinex_start')
   assert.equal(f.ui.questions, 1)
   f.ui.answer = 'No'
-  await f.call('mcp__kinex__kinex_call', { name: 'exec', arguments: { interpreter: 'python3', python: 'open("executed", "w").close()' } })
+  await f.call('mcp__kinex__kinex_call', { name: 'exec', arguments: { python: 'open("executed", "w").close()' } })
   assert.equal(f.ui.questions, 2)
   await assert.rejects(stat(path.join(f.cwd, 'executed')), { code: 'ENOENT' })
 })

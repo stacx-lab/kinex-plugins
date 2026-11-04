@@ -5,10 +5,11 @@ import path from 'node:path'
 import { compareCatalogs, applyCandidate } from '../script/sync.mjs'
 import { workspace } from './helpers.mjs'
 test('compatibility report distinguishes additions, removals and schema changes', () => {
-  const before = { tools: [{ name: 'a', inputSchema: { type: 'object' } }, { name: 'b' }], skills: [], workflows: [] }
-  const after = { tools: [{ name: 'a', inputSchema: { type: 'string' } }, { name: 'c' }], skills: [{ name: 'new' }], workflows: [] }
+  const before = { tools: [{ name: 'a', inputSchema: { type: 'object' } }, { name: 'b' }], skills: [], workflows: [], contextSections: [{ name: 'core.python' }, { name: 'setup.provisioning' }] }
+  const after = { tools: [{ name: 'a', inputSchema: { type: 'string' } }, { name: 'c' }], skills: [{ name: 'new' }], workflows: [], contextSections: [{ name: 'core.python' }] }
   assert.deepEqual(compareCatalogs(before, after).tools, { added: ['c'], removed: ['b'], changed: ['a'] })
   assert.deepEqual(compareCatalogs(before, after).skills.added, ['new'])
+  assert.deepEqual(compareCatalogs(before, after).contextSections, { added: [], removed: ['setup.provisioning'], changed: [] })
 })
 test('candidate application refuses concurrent edits before changing any working file', async t => {
   const destination = await workspace(t), candidate = await workspace(t)

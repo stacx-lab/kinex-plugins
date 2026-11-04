@@ -1,6 +1,6 @@
 {
   "name": "kinex-plugins",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -21,15 +21,17 @@
     "test:mcp": "node --test packages/mcp/test/*.test.mjs",
     "generate": "node script/generate.mjs",
     "kinex:sync": "node script/sync.mjs",
-    "benchmark": "node script/benchmark.mjs"
+    "benchmark": "node script/benchmark.mjs",
+    "install-plugins": "node script/hosts.mjs install",
+    "update": "node script/update.mjs"
   },
   "devDependencies": {
     "@anthropic-ai/claude-code": "2.1.299",
     "@earendil-works/pi-ai": "1.2.0",
     "@earendil-works/pi-coding-agent": "1.2.0",
     "@earendil-works/pi-tui": "1.2.0",
-    "@kinex/core": "file:vendor/kinex-core-1.0.0-6f2085937558e861.tgz",
-    "@kinex/setup": "file:vendor/kinex-setup-1.0.0-4d1970bbab910ce9.tgz",
+    "@kinex/core": "file:vendor/kinex-core-1.1.0-8f5786fb5331028e.tgz",
+    "@kinex/setup": "file:vendor/kinex-setup-1.1.0-8bd29754ef63b033.tgz",
     "@openai/codex": "0.162.1",
     "@types/node": "22.20.4",
     "typescript": "5.9.3"
