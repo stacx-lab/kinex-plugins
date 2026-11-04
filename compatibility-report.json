@@ -2,41 +2,68 @@
   "snapshots": [
     {
       "name": "@kinex/core",
-      "version": "1.0.0",
-      "file": "kinex-core-1.0.0-6f2085937558e861.tgz",
-      "sha256": "6f2085937558e86195cfc3f467b7110bae60b3d317190ad44c77eae4c90330d7",
+      "version": "1.1.0",
+      "file": "kinex-core-1.1.0-8f5786fb5331028e.tgz",
+      "sha256": "8f5786fb5331028eb31b8c4ad6eb2e5c1fee53cee79eea6de19da04a97dc21ab",
       "source": {
-        "revision": "afeddc698d14ea9fb5ae0e88f51fecd89000dec4",
-        "dirty": false,
-        "capturedAt": "2026-10-14T23:08:47.636Z"
+        "revision": "ade9a7e971b31e0a9b3f284df02e019ecf8db67b",
+        "capturedAt": "2026-11-04T20:40:08.124Z"
       }
     },
     {
       "name": "@kinex/setup",
-      "version": "1.0.0",
-      "file": "kinex-setup-1.0.0-4d1970bbab910ce9.tgz",
-      "sha256": "4d1970bbab910ce90175183a818ee4a53537637e4efae6a44f116ac3ffc25e85",
+      "version": "1.1.0",
+      "file": "kinex-setup-1.1.0-8bd29754ef63b033.tgz",
+      "sha256": "8bd29754ef63b033f1b4b7867d090ce308c07742ec8a53c52479cddb5a2a900f",
       "source": {
-        "revision": "afeddc698d14ea9fb5ae0e88f51fecd89000dec4",
-        "dirty": false,
-        "capturedAt": "2026-10-14T23:08:47.636Z"
+        "revision": "ade9a7e971b31e0a9b3f284df02e019ecf8db67b",
+        "capturedAt": "2026-11-04T20:40:08.124Z"
       }
     }
   ],
   "changes": {
     "tools": {
       "added": [],
-      "removed": [],
-      "changed": []
+      "removed": [
+        "servo"
+      ],
+      "changed": [
+        "calib_compute",
+        "calib_sample",
+        "device",
+        "device_stop",
+        "devices",
+        "exec",
+        "locate_object_3d",
+        "profile_write",
+        "relative_pose",
+        "run_policy"
+      ]
     },
     "skills": {
-      "added": [],
-      "removed": [],
-      "changed": []
+      "added": [
+        "calibrate-gripper-grip",
+        "calibrate-sensor-bias"
+      ],
+      "removed": [
+        "onboard-ros2"
+      ],
+      "changed": [
+        "calibrate-tcp-offset",
+        "setup-device"
+      ]
     },
     "workflows": {
       "added": [],
       "removed": [],
+      "changed": []
+    },
+    "contextSections": {
+      "added": [],
+      "removed": [
+        "core.conventions",
+        "setup.provisioning"
+      ],
       "changed": []
     }
   },

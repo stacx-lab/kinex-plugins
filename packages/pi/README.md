@@ -1,13 +1,15 @@
 # @kinex/pi
 
-Thin Pi 1.2.0 integration for the shared `@kinex/mcp` runtime. Install the published
-package with `pi install npm:@kinex/pi@1.0.0`, then open Pi in the robot workspace.
+Thin Pi 1.2.0 integration for the shared `@kinex/mcp` runtime. From a built
+checkout, run `npm run install-plugins -- --host pi` (or `pi install
+<checkout>/packages/pi`), then open Pi in the robot workspace. Pi loads the package
+from the checkout, so `npm run update` and a Pi restart pick up new versions.
 
 Pi's native MCP extension launches and owns the shared server. This extension
 supplies approval/questionnaire dialogs and three direct user commands:
 
 - `/kinex-start`: activate robotics without a model round trip.
-- `/kinex-status`: show the current runtime state.
+- `/kinex-status`: show the current runtime state and plugin/Kinex versions.
 - `/kinex-end`: cancel and dispose robotics while keeping Pi open.
 
 Shared skills expose onboarding, registration, calibration and robotics guidance.
@@ -16,7 +18,7 @@ inactive until explicitly started. Start/end/start creates a fresh session.
 
 Pi's tool pipeline owns default approvals, so permission extensions such as
 `pi-automode` can review the full MCP call and approve or block it. Kinex does not
-ask again for `exec`, controller tools or runtime activation. Explicit Kinex
+ask again for `exec`, Python tools (`python_tool`) or runtime activation. Explicit Kinex
 `ask`/`deny` rules still take precedence over these defaults, and malformed rules
 still ask. Questionnaires remain interactive. Without a permission extension,
 Pi's normal behavior applies: tool calls proceed without default approval prompts.
@@ -31,6 +33,8 @@ It does not own device state. If a user-configured MCP server named `kinex` over
 this extension's registration, direct commands cannot address that unrelated server;
 remove the conflicting entry to use this integration.
 
-`--kinex-recording` enables Kinex's recording behavior for this server. Node
->=22.22.2 and local Linux/macOS are required. See the root README for source builds,
-local tarball installation, validation and synchronized updates.
+`--kinex-recording` enables Kinex's recording behavior for this server. The MCP
+server runs on the same Node executable as Pi. Node >=22.22.2 and local
+Linux/macOS are required, plus Pixi (ROS Kinex Python, Linux x86-64) or uv for
+`exec`. See the root README for requirements, tarball installation, updates and
+upgrading 1.0 workspaces.

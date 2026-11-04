@@ -17,20 +17,26 @@ approval bridge use private local Unix sockets.
 | Tool | Purpose |
 | --- | --- |
 | `kinex_start` | Explicit activation; Kinex `runtime_start` permission applies. |
-| `kinex_status` | Lifecycle, active session, activation failures and recording status. |
+| `kinex_status` | Lifecycle, installed `mcp`/`core`/`setup` versions, activation failures, last error and recording status. |
 | `kinex_shutdown` | Cancel and dispose robotics; keep the host/server available. |
-| `kinex_tools` | Summaries; `tool` for a schema, `skill` or `workflow` for guidance, `context` for current state. |
+| `kinex_tools` | Summaries; `tool` for a schema, `skill` or `workflow` for guidance, `context` for robotics instructions and context sections. |
 | `kinex_call` | Execute `{name, arguments}` against the current permission-checked catalog. |
-| `kinex_stop` | Interrupt queued/active operations and stop actuators without a Kinex approval prompt. |
+| `kinex_stop` | Interrupt queued/active operations, invoke each loaded device's declared stop (or the named device's) and cancel scripts that commanded a stopped device, without a Kinex approval prompt. |
 
 `kinex_tools` and `kinex_call` require active Kinex. Start is idempotent while active;
-restart after shutdown creates a new runtime. Cleanup failure blocks restart to
-avoid overlapping runtimes. Stop is an inactive no-op; during activation it cancels
+restart after shutdown creates a new runtime. Core terminates the ROS hosts and
+processes it owns even when disposal reports a failure, so a failed cleanup is
+returned as an error, kept in `kinex_status.error`, and Kinex can start again.
+Profiles that core cannot parse (for example Kinex 1.0 profiles) fail activation
+and leave Kinex inactive. Stop is an inactive no-op; during activation it cancels
 activation. A host may impose its own approval before dispatching any MCP call.
 
 Tools, custom workspace tools, skills and setup workflows are discovered from
 core/setup at request time. Full schemas and context are not injected into every
-turn. After compaction/resume, retrieve discovery and full context again.
+turn. After compaction/resume, retrieve discovery and full context again. Device
+catalogs, readiness and ROS operation schemas are queried inside `exec`. Robotics
+Python runs only through `exec` in the workspace Kinex Python, prepared on first
+use with Pixi (ROS providers) or uv (`python.provider: "uv"`).
 
 Standalone launches default to `--permission-mode kinex`, which applies Kinex
 permission defaults and uses MCP form elicitation for approvals. Pi supplies a
@@ -40,16 +46,19 @@ the Pi plugin and generated Claude/Codex bundles select it automatically. This m
 trusts the launcher to use that pipeline. It does not detect or inspect any specific
 auto-mode extension.
 
-Explicit Kinex rules are honored in both modes: `deny` blocks, `ask` prompts and
-`allow` proceeds. Malformed rules ask. Emergency stop retains its always-allowed
+Explicit Kinex rules in `.kinex/kinex.json` (or a workspace `kinex.json`) are
+honored in both modes: `deny` blocks, `ask` prompts and `allow` proceeds. Python
+execution and Python tools use the `python_tool` permission. Malformed rules ask.
+Emergency stop retains its always-allowed
 Kinex policy. Questionnaires always use interaction. If an explicit ask or question
 has no available UI, it declines. `kinex_status` includes `permissionMode` even
 while inactive. Models cannot change the mode through tool arguments.
 
 Host mode removes duplicate prompts, not host review: a host-blocked call must
 never reach execution. Without host permission gates, calls proceed as they do
-for that host's other tools. Set `--permission-mode kinex` in a local Claude/Codex
-MCP configuration to restore Kinex's default approval dialogs, then restart the host.
+for that host's other tools. Set `--permission-mode kinex` in the local Claude/Codex
+marketplace's MCP configuration to restore Kinex's default approval dialogs, then
+refresh and restart the host.
 
 ## Direct user control
 
@@ -93,4 +102,6 @@ In a development copy of the host plugin, set `.mcp.json` to:
 
 Install that plugin through the host, or use `claude --plugin-dir /path/to/copy`.
 Use absolute paths. The package works after relocation without the standalone
-Kinex repository. See the root README for release and update procedures.
+Kinex repository. Hosts cache plugins by version, so give a changed copy a new
+version (for example `1.1.0+local2`) before refreshing it. See the root README for
+the checkout-based install and update commands.

@@ -116,6 +116,11 @@ export async function serveCommands(cwd: string, execute: (request: Request, con
 }
 
 export async function endpoints(cwd: string): Promise<Endpoint[]> {
+  return (await liveEndpoints()).filter(endpoint => endpoint.directory === path.resolve(cwd))
+}
+
+// Live servers for every workspace of this user; the updater refuses to rebuild under them.
+export async function liveEndpoints(): Promise<Endpoint[]> {
   const root = directory()
   const present = await privateDirectory(root).then(() => true, (error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return false; throw error })
   if (!present) return []
@@ -125,7 +130,7 @@ export async function endpoints(cwd: string): Promise<Endpoint[]> {
     const contents = await readFile(path.join(root, file), "utf8").catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return undefined; throw error })
     if (!contents) continue
     const endpoint = parseEndpoint(contents)
-    if (!endpoint || path.resolve(cwd) !== endpoint.directory || path.dirname(endpoint.socket) !== root) continue
+    if (!endpoint || path.dirname(endpoint.socket) !== root) continue
     try { process.kill(endpoint.pid, 0) } catch { continue }
     result.push(endpoint)
   }

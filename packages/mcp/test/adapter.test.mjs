@@ -6,7 +6,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js'
-import { isolate, workspace, seed } from '../../../test/helpers.mjs'
+import { isolate, workspace, seed, seedClock, kinexPython } from '../../../test/helpers.mjs'
 const isolated = await isolate()
 after(isolated.cleanup)
 const { createKinexMcpServer } = await import('../dist/index.js')
@@ -51,7 +51,7 @@ test('fixed MCP catalog discovers live tools, skills and workflows without creat
   assert.ok(!discovery.tools.some(tool => tool.name === 'record'))
   assert.equal('core.devices' in discovery.context.sections, false)
   assert.ok(discovery.tools.some(tool => tool.name === 'setup_plan'))
-  assert.ok(discovery.skills.some(skill => skill.name === 'onboard-ros2'))
+  assert.ok(discovery.skills.some(skill => skill.name === 'calibrate-gripper-grip'))
   assert.ok(discovery.workflows.some(command => command.name === 'calibrate'))
   assert.match((await f.adapter.command('devices', '', { confirm: async () => false })).text, /sensor/)
   assert.ok((await f.call('kinex_tools', { skill: 'setup-device' })).structuredContent.skill.content.length > 100)
@@ -178,15 +178,16 @@ test('MCP cancellation aborts active work and prevents queued execution', async 
   assert.equal((await queued).isError, true); assert.equal(count, 1)
 })
 
-test('private controls share recording and driver state, reject wrong workspace and cancel on disconnect', async t => {
+test('private controls share recording and device state, reject wrong workspace and cancel on disconnect', async t => {
   const f = await fixture(t)
-  await seed(f.adapter.runtime)
+  await seed(f.adapter.runtime); await seedClock(f.adapter.runtime); await kinexPython(f.adapter.runtime)
+  await writeFile(path.join(f.directory, 'kinex.json'), JSON.stringify({ permission: { device_read: 'allow' } }))
   const ipc = await serveCommands(f.directory, (request, connection) => f.adapter.command(request.command, request.args, connection))
   t.after(() => ipc.dispose())
   const endpoint = (await endpoints(f.directory)).find(item => item.instance === ipc.endpoint.instance)
   const command = (name, args = '') => requestCommand(endpoint, { method: 'execute', directory: f.directory, command: name, args }, { signal: signal(), confirm: async () => false })
-  await command('load', 'sensor')
-  assert.ok(!(await f.tool('device', { deviceID: 'sensor' })).isError)
+  await command('load', 'sensor'); await command('load', 'world')
+  assert.ok(!(await f.tool('device', { deviceID: 'sensor', action: 'read' })).isError)
   await command('record', 'start sensor=20')
   assert.equal((await f.adapter.runtime.recording.status()).status, 'recording')
   assert.equal((await f.tool('record', { action: 'status' })).isError, true)
@@ -202,25 +203,26 @@ test('private controls share recording and driver state, reject wrong workspace 
   })
   const rejected = assert.rejects(pending, /cancelled/)
   await asking; abort.abort(); await rejected
-  assert.equal((await f.adapter.runtime.devices.list()).length, 1)
+  assert.ok((await f.adapter.runtime.devices.list()).some(device => device.name === 'sensor'))
 })
 
-test('startup reserves persistent driver initialization and disposal finalizes recording and owned processes', async t => {
+test('startup warm-loads node hosts and disposal finalizes recording and owned processes', async t => {
   const directory = await workspace(t)
-  const core = createKinexRuntime({ directory }); await seed(core)
-  await core.profiles.writeDevice({ name: 'sensor', loaded: true, access: { connection: { kind: 'process' }, driver: { interpreter: 'python3', persistent: true, actions: ['load', 'read', 'status', 'stop', 'unload'], timeout_s: 3 } } })
-  const dir = path.join(directory, '.kinex/devices/sensor')
-  await writeFile(path.join(dir, 'driver.py'), `import os,time\nfrom kinex.driver_protocol import run\nready=False\ndef dispatch(action,args):\n global ready\n if action=='load':\n  time.sleep(0.1)\n  ready=True\n if action=='read' and not ready: raise RuntimeError('not ready')\n return {'ok':True,'pid':os.getpid(),'ready':ready}\nrun(dispatch,lambda:None)\n`)
+  const core = createKinexRuntime({ directory })
+  const dir = await seed(core, 'sensor', { loaded: true }); await seedClock(core, 'world', { loaded: true }); await kinexPython(core)
+  await writeFile(path.join(dir, 'load-delay'), '0.1')
   await writeFile(path.join(directory, 'kinex.json'), JSON.stringify({ permission: { device_read: 'allow', record: 'allow' } }))
   await core.dispose()
   const f = await fixture(t, { directory, enableRecording: true })
-  const first = await f.tool('device', { deviceID: 'sensor', compact: true })
+  // Reads wait on the device lane until warm activation finishes.
+  const first = await f.tool('device', { deviceID: 'sensor', action: 'read', compact: true })
   assert.ok(!first.isError, output(first))
   const reading = JSON.parse(first.structuredContent.output)
   assert.equal(reading.ready, true)
-  const second = await f.tool('device', { deviceID: 'sensor', compact: true })
+  const second = await f.tool('device', { deviceID: 'sensor', action: 'read', compact: true })
   assert.equal(JSON.parse(second.structuredContent.output).pid, reading.pid)
   assert.ok((await f.call('kinex_tools')).structuredContent.tools.some(tool => tool.name === 'record'))
+  await f.adapter.command('load', 'world', { confirm: async () => false })
   const capture = await f.adapter.command('record', 'start sensor=20', { confirm: async () => false })
   const recordID = JSON.parse(capture.text).manifest.id
   await delay(80)
@@ -228,7 +230,6 @@ test('startup reserves persistent driver initialization and disposal finalizes r
   assert.throws(() => process.kill(reading.pid, 0), { code: 'ESRCH' })
   const manifest = JSON.parse(await readFile(path.join(directory, '.kinex/recordings', recordID, 'recording.json'), 'utf8'))
   assert.equal(manifest.status, 'stopped'); assert.equal(manifest.endedBy, 'exit')
-  await assert.rejects(stat(path.join(directory, '.kinex/python')), { code: 'ENOENT' })
 })
 
 test('context errors after an action retain its result and attachment omissions are explicit', async t => {
@@ -257,9 +258,8 @@ test('context errors after an action retain its result and attachment omissions 
 
 test('disposal cancels initialization while a trusted command waits on its lane', { timeout: 10000 }, async t => {
   const directory = await workspace(t)
-  const core = createKinexRuntime({ directory }); await seed(core)
-  await core.profiles.writeDevice({ name: 'sensor', loaded: true, access: { connection: { kind: 'process' }, driver: { interpreter: 'python3', persistent: true, actions: ['load', 'read', 'unload'], timeout_s: 60 } } })
-  await writeFile(path.join(directory, '.kinex/devices/sensor/driver.py'), `import time\nfrom kinex.driver_protocol import run\ndef dispatch(action,args):\n if action=='load': time.sleep(30)\n return {'ok':True}\nrun(dispatch,lambda:None)\n`)
+  const core = createKinexRuntime({ directory })
+  await writeFile(path.join(await seed(core, 'sensor', { loaded: true }), 'load-delay'), '30')
   await core.dispose()
   const f = await fixture(t, { directory })
   const command = f.adapter.command('unload', 'sensor', { confirm: async () => false })
@@ -285,7 +285,7 @@ test('explicit core-only composition omits setup roots, tools and workflows', as
   const discovered = (await f.call('kinex_tools')).structuredContent
   assert.ok(discovered.tools.some(tool => tool.name === 'device'))
   assert.ok(!discovered.tools.some(tool => tool.name === 'setup_plan'))
-  assert.ok(!discovered.skills.some(skill => skill.name === 'onboard-ros2'))
+  assert.ok(!discovered.skills.some(skill => skill.name === 'calibrate-gripper-grip'))
   assert.ok(!discovered.workflows.some(command => command.name === 'onboarding'))
   assert.ok(!discovered.contextSections.some(key => key.startsWith('setup.')))
   await assert.rejects(stat(path.join(f.directory, '.kinex')), { code: 'ENOENT' })
@@ -298,9 +298,10 @@ test('host-managed exec runs without duplicate prompts and preserves live explic
     asks++
     return accepted ? { action: 'accept', content: { allow: true } } : { action: 'decline' }
   })
+  await kinexPython(f.adapter.runtime)
   const marker = path.join(f.directory, 'executed')
-  const exec = () => f.tool('exec', { interpreter: 'python3', python: 'with open("executed", "a") as file: file.write("x")' })
-  const rule = action => writeFile(path.join(f.directory, 'kinex.json'), JSON.stringify({ permission: { python_tool_controller: action } }))
+  const exec = () => f.tool('exec', { python: 'with open("executed", "a") as file: file.write("x")' })
+  const rule = action => writeFile(path.join(f.directory, 'kinex.json'), JSON.stringify({ permission: { python_tool: action } }))
   for (let i = 0; i < 2; i++) {
     const result = await exec(); assert.ok(!result.isError, output(result))
   }

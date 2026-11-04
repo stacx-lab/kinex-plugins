@@ -7,7 +7,7 @@ import { once } from 'node:events'
 import { cp, mkdir, writeFile, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { isolate, workspace, seed } from '../../../test/helpers.mjs'
+import { isolate, workspace, seed, seedClock, kinexPython } from '../../../test/helpers.mjs'
 import { entry } from './helpers.mjs'
 const isolated = await isolate(); after(isolated.cleanup)
 const exec = promisify(execFile), root = fileURLToPath(new URL('../../../', import.meta.url))
@@ -24,7 +24,7 @@ test('real Claude plugin loads skills and MCP, starts explicitly, ends/restarts,
   server.command = process.execPath
   server.args = [entry, ...server.args.slice(server.args.indexOf('serve')), '--directory', directory]
   await writeFile(configFile, JSON.stringify(mcpConfig))
-  const runtime = createKinexRuntime({ directory }); await seed(runtime); await runtime.dispose()
+  const runtime = createKinexRuntime({ directory }); await seed(runtime); await seedClock(runtime); await kinexPython(runtime); await runtime.dispose()
   const steps = [ ['kinex_status', {}], ['kinex_start', {}], ['kinex_call', { name: 'device', arguments: { deviceID: 'sensor', action: 'load' } }],
     ['kinex_tools', {}], ['kinex_shutdown', {}], ['kinex_status', {}], ['kinex_start', {}] ]
   const requests = [], failures = []
@@ -40,6 +40,8 @@ test('real Claude plugin loads skills and MCP, starts explicitly, ends/restarts,
       const name = step && request.tools?.find(tool => tool.name.endsWith(`__${step[0]}`))?.name
       if (step && !name) throw new Error(`Missing ${step[0]} in ${request.tools?.map(tool => tool.name)}`)
       if (agentRequest && !step && !recordingID) {
+        // Restart restores the sensor in the background; explicit loads wait for both node hosts.
+        for (const device of ['sensor', 'world']) await exec(process.execPath, [entry, 'control', '--directory', directory, 'load', device], { timeout: 10000 })
         const { stdout } = await exec(process.execPath, [entry, 'control', '--directory', directory, 'record', 'start', 'sensor=10'], { timeout: 10000 })
         recordingID = JSON.parse(stdout).manifest.id
       }

@@ -4,7 +4,7 @@
       "command": "npx",
       "args": [
         "-y",
-        "@kinex/mcp@1.0.0",
+        "@kinex/mcp@1.1.0",
         "serve",
         "--permission-mode",
         "host"

@@ -5,7 +5,7 @@ import { promisify } from 'node:util'
 import { writeFile, readFile, mkdir } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { isolate, workspace, seed } from '../../../test/helpers.mjs'
+import { isolate, workspace, seed, seedClock, kinexPython } from '../../../test/helpers.mjs'
 import { codexHost, responsesProvider, entry } from './helpers.mjs'
 const isolated = await isolate()
 after(isolated.cleanup)
@@ -14,7 +14,7 @@ const exec = promisify(execFile)
 
 test('real Codex uses host permissions, honors explicit rules and refreshes context across turns', { timeout: 120000 }, async t => {
   const directory = await workspace(t)
-  const runtime = createKinexRuntime({ directory }); await seed(runtime); await runtime.dispose()
+  const runtime = createKinexRuntime({ directory }); await seed(runtime); await seedClock(runtime); await kinexPython(runtime); await runtime.dispose()
   const provider = await responsesProvider(t)
   const host = await codexHost(t, directory, provider)
   const tool = (name, args = {}) => host.request('mcpServer/tool/call', { threadId: host.thread.id, server: 'kinex', tool: name, arguments: args })
@@ -36,14 +36,15 @@ test('real Codex uses host permissions, honors explicit rules and refreshes cont
   await writeFile(path.join(directory, 'kinex.json'), JSON.stringify({ permission: { device_act: 'deny' } }))
   assert.equal((await load()).isError, true)
   assert.equal(approvals, 2)
-  await writeFile(path.join(directory, 'kinex.json'), '{}')
+  await writeFile(path.join(directory, 'kinex.json'), JSON.stringify({ permission: { device_read: 'allow' } }))
   const control = (...args) => exec(process.execPath, [entry, 'control', '--directory', directory, ...args], { env: host.env, timeout: 10000 })
   assert.match((await control('devices')).stdout, /sensor: other, loaded/)
   assert.equal(provider.requests.length, 0)
+  await control('load', 'world')
   await control('record', 'start', 'sensor=20')
   const status = JSON.parse((await control('record', 'status')).stdout)
   assert.equal(status.active.status, 'recording')
-  assert.ok(!(await tool('kinex_call', { name: 'device', arguments: { deviceID: 'sensor' } })).isError)
+  assert.ok(!(await tool('kinex_call', { name: 'device', arguments: { deviceID: 'sensor', action: 'read' } })).isError)
   await control('record', 'stop')
   const manifest = JSON.parse(await readFile(path.join(directory, '.kinex/recordings', status.active.id, 'recording.json'), 'utf8'))
   assert.equal(manifest.status, 'stopped')
@@ -56,7 +57,7 @@ test('real Codex uses host permissions, honors explicit rules and refreshes cont
   const first = await host.request('turn/start', { threadId: host.thread.id, input: [{ type: 'text', text: 'Inspect current Kinex tools and devices.' }] })
   await host.wait(value => value.method === 'turn/completed' && value.params.turn.id === first.turn.id)
   assert.ok(provider.requests.length >= 2, JSON.stringify(host.notifications.slice(-10)))
-  assert.match(JSON.stringify(provider.requests.at(-1).input.filter(item => item.type === 'function_call_output')), /setup.provisioning/)
+  assert.match(JSON.stringify(provider.requests.at(-1).input.filter(item => item.type === 'function_call_output')), /core\.python/)
   await mkdir(path.join(directory, '.kinex/tools'), { recursive: true })
   await writeFile(path.join(directory, '.kinex/tools/live.js'), "export default { description: 'live', execute: async () => ({title:'live',output:'LIVE_CODEX_RESULT'}) }")
   provider.steps.push({ search: true }, { name: 'kinex_tools', arguments: {} }, { name: 'kinex_call', arguments: { name: 'live', arguments: {} } }, { text: 'REFRESH_DONE' })
